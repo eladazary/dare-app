@@ -1,0 +1,60 @@
+name: Deploy Verification Lambda
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'services/verification/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: services/verification/node_modules
+          key: ${{ runner.os }}-verification-${{ hashFiles('services/verification/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-verification-
+
+      - name: Install dependencies
+        working-directory: services/verification
+        run: npm ci
+
+      - name: Build
+        working-directory: services/verification
+        run: npm run build
+
+      - name: Create deployment zip
+        working-directory: services/verification
+        run: zip -r verification.zip dist/ node_modules/
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Update Lambda function code
+        working-directory: services/verification
+        run: |
+          aws lambda update-function-code \
+            --function-name gone-verification \
+            --zip-file fileb://verification.zip
+
+      - name: Wait for update to complete
+        run: |
+          aws lambda wait function-updated \
+            --function-name gone-verification

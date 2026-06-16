@@ -1,0 +1,56 @@
+name: EAS Build (iOS)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/mobile/**'
+
+jobs:
+  build-ios:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Expo
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        working-directory: apps/mobile
+        run: npm ci
+
+      - name: Build iOS (preview)
+        working-directory: apps/mobile
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          # EXPO_PUBLIC_CLOUDFLARE_WORKER_URL not used in Phase 1
+        run: eas build --platform ios --profile preview --non-interactive
+
+  # Android build — Phase 2
+  # build-android:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: '20'
+  #     - uses: expo/expo-github-action@v8
+  #       with:
+  #         expo-version: latest
+  #         token: ${{ secrets.EXPO_TOKEN }}
+  #     - working-directory: apps/mobile
+  #       run: npm ci
+  #     - working-directory: apps/mobile
+  #       run: eas build --platform android --profile preview --non-interactive

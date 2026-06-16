@@ -1,0 +1,47 @@
+name: Deploy Supabase Edge Functions
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/functions/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+
+      - name: Deploy challenge-generator
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy challenge-generator \
+            --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Deploy midnight-ceremony
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy midnight-ceremony \
+            --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Deploy send-notifications
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy send-notifications \
+            --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Deploy get-upload-url
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy get-upload-url \
+            --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
