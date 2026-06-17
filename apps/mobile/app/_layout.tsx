@@ -57,13 +57,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }, [setSession]);
 
   useEffect(() => {
-    const inTabsGroup = segments[0] === '(tabs)';
     const inOnboarding = segments[0] === 'onboarding';
+    const { preview } = useAuthStore.getState();
 
-    if (session === undefined) {
-      // Still loading — don't redirect yet.
-      return;
-    }
+    if (session === undefined) return;
+    if (preview) return; // preview mode bypasses auth gate
 
     if (!session && !inOnboarding) {
       router.replace('/onboarding');

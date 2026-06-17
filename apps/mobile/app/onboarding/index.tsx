@@ -10,9 +10,11 @@ import {
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { COLORS } from '@/constants/colors';
+import { useAuthStore } from '@/store/auth';
 
 export default function OnboardingIndex() {
   const router = useRouter();
+  const setPreview = useAuthStore((s) => s.setPreview);
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -66,7 +68,7 @@ export default function OnboardingIndex() {
         <Text style={styles.signInText}>Already an agent? Sign in</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => router.replace('/(tabs)/map')}>
+      <TouchableOpacity onPress={() => { setPreview(true); router.replace('/(tabs)/map'); }}>
         <Text style={styles.previewText}>Preview the app →</Text>
       </TouchableOpacity>
     </View>
