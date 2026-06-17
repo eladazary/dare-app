@@ -43,19 +43,19 @@ Run out of attempts → pay for 3 more ($0.99) to protect your streak.
 
 ## Social Mechanics
 
-| Mechanic | How it works | Why it works |
-|---|---|---|
-| **Taunt** | After solving, one tap sends same trace to a friend with your time as benchmark. 48h to beat it. | Competitive ego, async |
-| **Live Race** | Both players start the same trace simultaneously. Real-time dots on map. First selfie wins. | Shared story |
-| **Rescue** | Friend is on last attempt → you get notified → send them the hint → **your streak continues ONLY if they succeed** | Streak survival + acquisition |
-| **Ghost Trail** | After solving, blurred pin appears on friends' map for 24h. They can tap it to receive the same trace. | Passive FOMO, map life |
-| **Territory** | Most traces solved in a zone = you own it. Squads defend collectively. Losing a zone sends a notification. | Loss aversion, squad loyalty |
-| **Bounty Board** | Stake XP on unsolved traces. First solver claims the pot. | City-wide FOMO |
-| **Synchronized Unlock** | Two friends both near the same area → special co-op trace unlocks. | Serendipity |
+| Mechanic | V1 | V2 | Why it works |
+|---|---|---|---|
+| **Taunt** | ✅ | — | After solving, one tap sends same trace to a friend with your time as benchmark. 48h to beat it. |
+| **Rescue** | ✅ | — | Friend on last attempt → you send hint → streak credited ONLY if they succeed. Acquisition engine. |
+| **Ghost Trail** | ✅ | — | After solving, blurred pin on friends' map for 24h. Tap to receive same trace. |
+| **Live Race** | — | ✅ | Both players start simultaneously. Real-time dots on map. First selfie wins. |
+| **Territory** | Leaderboard only | Full map overlay | Most solves in a zone = ownership. Squads defend. |
+| **Bounty Board** | — | ✅ | Stake XP on unsolved traces. First solver claims the pot. |
+| **Synchronized Unlock** | — | ✅ | Two friends near same area → co-op trace unlocks. |
 
 ### Streak Rule
 
-Streak = at least 1 qualifying action every **3 days** (not daily — location-based app needs flexibility).
+Streak = at least 1 qualifying action every **3 days**.
 
 Qualifying actions:
 - Solve a trace yourself
@@ -84,19 +84,28 @@ The trace card shows a riddle with black redaction bars over key phrases. As the
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Mobile | React Native + Expo SDK 51, expo-router |
-| Database | Supabase (Postgres + PostGIS + Auth + Realtime) |
-| Photo storage | Cloudflare R2 (zero egress fees) |
-| Selfie verification | AWS Rekognition |
-| GPS verification | AWS Lambda (Node.js 20) — haversine distance check |
-| Leaderboard | AWS DynamoDB (on-demand) |
-| State | Zustand |
-| Data fetching | React Query |
-| Animations | react-native-reanimated |
-| Payments | RevenueCat |
-| Analytics | Mixpanel |
+### V1 (simplified — 5/10 difficulty)
+
+| Layer | Technology | Notes |
+|---|---|---|
+| Mobile | React Native + Expo SDK 51, expo-router | |
+| Database | Supabase (Postgres + PostGIS + Auth + Realtime) | Handles everything in V1 |
+| GPS verification | Supabase Edge Function (haversine) | Replaces Lambda — 10 lines of code |
+| Leaderboard | Postgres query on Supabase | Replaces DynamoDB |
+| Photo storage | Cloudflare R2 (zero egress fees) | |
+| State | Zustand | |
+| Data fetching | React Query | |
+| Animations | react-native-reanimated | |
+
+### V2 additions (when scale demands it)
+
+| Layer | Technology | When to add |
+|---|---|---|
+| Selfie verification | AWS Rekognition | When cheating is an actual problem |
+| Verification pipeline | AWS Lambda | With Rekognition |
+| Leaderboard at scale | AWS DynamoDB | 100k+ users |
+| Payments | RevenueCat | Phase 4 |
+| Analytics | Mixpanel | Phase 4 |
 
 ---
 
@@ -112,7 +121,6 @@ The trace card shows a riddle with black redaction bars over key phrases. As the
 | Design system (colors, typography, copy) | ✅ Done |
 | REDACTED theme | ✅ Done |
 | Arena selection (global / public / private code) | ✅ Done |
-| Action-based trace challenge templates | ✅ Done |
 
 ---
 
@@ -121,10 +129,9 @@ The trace card shows a riddle with black redaction bars over key phrases. As the
 ### Phase 0 — Infrastructure · Weeks 1–2
 **Goal:** Everything wired up, auth works end-to-end on real device.
 
-- [ ] Supabase project created → run migrations 001, 002, 003, 005, 007 in order (007_traces.sql)
+- [ ] Supabase project created → run migrations 001, 002, 003, 005, 007 in order
 - [ ] PostGIS extension enabled on Supabase
 - [ ] Cloudflare R2 bucket + `get-upload-url` edge function deployed
-- [ ] AWS: `terraform apply` → Lambda + Rekognition + DynamoDB live
 - [ ] EAS configured → first TestFlight build deploys successfully
 - [ ] Magic link auth working on real iPhone
 - [ ] `.env.local` populated with real credentials
@@ -134,99 +141,91 @@ The trace card shows a riddle with black redaction bars over key phrases. As the
 
 ---
 
-### Phase 1 — Core Loop · Weeks 3–6
+### Phase 1 — Core Loop · Weeks 3–5
 **Goal:** One person can find a real trace in the real world.
 
 **Week 3–4: Map + proximity**
-- [ ] `react-native-maps` dark-mode map replaces the scroll view
+- [ ] `react-native-maps` dark-mode map replaces the mock scroll view
 - [ ] PostGIS query: `ST_DWithin` fetches traces within 1km of user
 - [ ] TracePin rendered on real map at trace coordinates
-- [ ] Foreground GPS polling every 30s, background every 2min
-- [ ] Push notification fires when user enters `notify_radius_meters`
+- [ ] Foreground GPS polling every 30s
+- [ ] Native geofence triggers push notification when user enters `notify_radius_meters`
 - [ ] Tap pin → TraceCard slides up with real clue from DB
 
-**Week 5–6: Solve flow**
-- [ ] Proximity detection: DB stage updates as user gets closer (locked → approaching → close)
-- [ ] Redaction bars lift based on GPS stage (not demo stepper)
-- [ ] Camera opens → selfie captured → uploaded to R2 via presigned URL
-- [ ] Lambda pipeline: GPS haversine check + EXIF timestamp verify
-- [ ] Success: PolaroidReveal animation, trace_solve written to DB, streak trigger fires
-- [ ] Failure: attempt decremented, feedback shown, "buy more attempts" gate on 0
+**Week 5: Solve flow**
+- [ ] User taps "I found it" → camera opens → selfie captured
+- [ ] Selfie uploaded to R2 via presigned URL
+- [ ] Supabase Edge Function: haversine GPS check at submission time
+- [ ] If within solve radius → success: PolaroidReveal animation, trace_solve written to DB, streak trigger fires
+- [ ] If outside radius → failure: attempt decremented, "get closer" feedback
+- [ ] Redaction bars lift when solve succeeds (not GPS-continuous — on submission)
 
 **Content:**
 - [ ] Seed 150 hand-curated traces across Tel Aviv + London
 
-**Exit criteria:** Walk outside, receive a notification, crack a trace, take a selfie, it registers as solved.
+**Exit criteria:** Walk outside, receive a notification, find a trace, take a selfie, it registers as solved.
 
 ---
 
-### Phase 2 — Social Core · Weeks 7–10
+### Phase 2 — Social Core · Weeks 6–9
 **Goal:** First 100 users playing together.
 
-**Week 7–8: Friends + Taunt**
+**Week 6–7: Friends + Taunt**
 - [ ] User profiles + follow/friend system
 - [ ] Taunt: one tap after solving → friend gets push notification + 48h timer
 - [ ] Challenged user sees trace with challenger's benchmark time
-- [ ] Taunt result screen (won / lost) with shareable moment
+- [ ] Taunt result screen (won / lost)
 
-**Week 9–10: Rescue + Ghost Trail**
+**Week 8–9: Rescue + Ghost Trail**
 - [ ] Rescue: friend reaches last attempt → rescuer gets push notification
-- [ ] Rescuer sends hint (trace's `hint` field) via in-app message
-- [ ] Streak credited only when rescued user solves (DB trigger handles this)
-- [ ] Ghost trail: blurred pins on map from friends' solves (24h, `ghost_trails` table)
+- [ ] Rescuer sends hint via in-app message
+- [ ] Streak credited only when rescued user solves (DB trigger already built)
+- [ ] Ghost trail: blurred pins from friends' solves (24h TTL, `ghost_trails` table)
 - [ ] Tap ghost pin → receive same trace
-- [ ] Field Intel feed: friends' recent solves with selfies + trace ID
+- [ ] Field Intel feed: friends' recent solves with selfies
 
-**Exit criteria:** You taunt a friend, receive the notification, watch your streak depend on whether they find it.
+**Exit criteria:** You taunt a friend, they find the trace, your streak depends on it.
 
 ---
 
-### Phase 3 — Competitive Layer · Weeks 11–13
+### Phase 3 — Competitive Layer · Weeks 10–12
 **Goal:** Reasons to open the app every day even without a new trace.
 
-**Week 11: Territory**
-- [ ] Territory zones seeded for each city (geo-polygons)
-- [ ] Map overlay showing zone ownership with gold/colour highlight
-- [ ] Claim logic: most trace solves in zone wins it
-- [ ] Push notification when someone takes your zone
+**Week 10: Zone leaderboard (lightweight territory)**
+- [ ] City divided into named zones (Florentin, Shoreditch, etc.)
+- [ ] "Top tracer in [zone]" leaderboard — most solves wins the zone
+- [ ] Profile shows zones you lead
+- [ ] Push notification when someone overtakes you in a zone
 
-**Week 12: Bounty Board**
+**Week 11–12: Bounty Board + shareable solve card**
 - [ ] Post a bounty: stake XP on any unsolved trace
-- [ ] Bounty board screen in Arena tab, sorted by XP stake
-- [ ] Claim on solve: XP transfers, notification to poster
+- [ ] Bounty board in Arena tab, sorted by XP stake
+- [ ] Shareable solve card: selfie + trace ID + time → native share sheet → drives installs
 
-**Week 13: Live Race**
-- [ ] Challenge flow: both players confirm → trace activates simultaneously
-- [ ] Real-time opponent dot on map via Supabase Realtime
-- [ ] 5-minute timeout if neither solves
-- [ ] Result screen with time delta
-
-**Exit criteria:** City map shows ownership colours, bounties visible, raced at least one friend.
+**Exit criteria:** Zone leaderboard live, bounties visible, first solve card shared externally.
 
 ---
 
-### Phase 4 — Monetisation + Growth · Weeks 14–15
-**Goal:** First revenue, first viral loop.
+### Phase 4 — Monetisation + Growth · Weeks 13–14
+**Goal:** First revenue, viral loop validated.
 
-- [ ] Extra attempts: RevenueCat integration, $0.99 for 3 attempts, shown at 0 attempts remaining
-- [ ] Shareable solve card: selfie + trace number + time → native share sheet → drives installs
+- [ ] Extra attempts: simple in-app purchase ($0.99 for 3), shown at 0 attempts remaining
 - [ ] Referral: invite link gives both users a bonus trace (harder, higher XP)
-- [ ] Analytics: Mixpanel events on solve, taunt sent, taunt converted, rescue triggered, purchase
-- [ ] AI trace generator: Supabase Edge Function calls Claude Haiku with OSM POI data to generate clues at scale
+- [ ] Analytics: track solve rate, taunt conversion, rescue triggered, purchase
+- [ ] AI trace generator: Supabase Edge Function + Claude Haiku + OSM POI data
 
 **Exit criteria:** Someone pays for extra attempts. Someone shares a solve card.
 
 ---
 
-### Phase 5 — Launch · Weeks 16–18
+### Phase 5 — Launch · Weeks 15–17
 **Goal:** App Store live, first 1,000 users.
 
 - [ ] TestFlight beta: 200 users, 2-week bug bash
-- [ ] Trace content expanded to 500+ traces across 5 cities
-- [ ] App Store screenshots (show the REDACTED card + map)
-- [ ] App Store metadata + keywords
+- [ ] Trace content expanded to 500+ across 5 cities
+- [ ] App Store screenshots + metadata
 - [ ] runtracer.app landing page: tagline, screenshots, waitlist → download
-- [ ] App Store submission → Apple review → live
+- [ ] App Store submission → live
 
 **Exit criteria:** App live on App Store, 1,000 downloads in first month.
 
@@ -234,28 +233,43 @@ The trace card shows a riddle with black redaction bars over key phrases. As the
 
 ## Timeline Summary
 
-| Phase | What | Weeks | Milestone |
-|---|---|---|---|
-| 0 | Infrastructure | 1–2 | Auth works on device |
-| 1 | Core loop | 3–6 | Real trace solved in real city |
-| 2 | Social core | 7–10 | 100 users playing together |
-| 3 | Competitive layer | 11–13 | Territory + bounty board live |
-| 4 | Monetisation + growth | 14–15 | First revenue + viral share |
-| 5 | Launch | 16–18 | App Store live |
+| Phase | What | Weeks | Difficulty | Milestone |
+|---|---|---|---|---|
+| 0 | Infrastructure | 1–2 | 4/10 | Auth works on device |
+| 1 | Core loop | 3–5 | 5/10 | Real trace solved in real city |
+| 2 | Social core | 6–9 | 5/10 | 100 users playing together |
+| 3 | Competitive layer | 10–12 | 4/10 | Leaderboard + bounties live |
+| 4 | Monetisation + growth | 13–14 | 4/10 | First revenue + viral share |
+| 5 | Launch | 15–17 | 3/10 | App Store live |
 
-**Target launch: mid-October 2026**
+**Overall: 5/10 difficulty · Target launch: early October 2026**
+*(saved ~6 weeks vs original plan by cutting AWS + deferring Live Race + Territory)*
+
+---
+
+## V2 Backlog (post-launch)
+
+These are deferred, not dropped. Build once you have users validating the core loop:
+
+- Live Race (real-time location sharing)
+- Territory map overlay (geo-polygons, squad defence)
+- AWS Rekognition selfie verification (when cheating is a real problem)
+- Bounty Board staking (V1 has read-only bounties, V2 adds XP transfer)
+- Synchronized unlock
+- Android build
+- Subscription tier (Tracer+)
 
 ---
 
 ## Trace Content Plan
 
 **Phase 1 (hand-curated, 150 traces):**
-- Tel Aviv: 75 traces (Florentin, Neve Tzedek, Rothschild, Carmel Market, Old Jaffa)
-- London: 75 traces (Shoreditch, Borough Market, South Bank, Notting Hill, Camden)
-- 3 difficulties each location: easy (famous spots), medium (known to locals), hard (hidden)
+- Tel Aviv: 75 traces — Florentin, Neve Tzedek, Rothschild, Carmel Market, Old Jaffa
+- London: 75 traces — Shoreditch, Borough Market, South Bank, Notting Hill, Camden
+- 3 difficulties per area: easy (well-known spots), medium (locals know), hard (hidden details)
 
 **Phase 2 (AI-generated, 500+ traces):**
-- Edge Function: fetch POI from OpenStreetMap → pass to Claude Haiku with prompt template → generate clue + hint + difficulty
+- Supabase Edge Function: fetch POI from OpenStreetMap → Claude Haiku generates clue + hint + difficulty
 - Human review queue before traces go live
 - Expand to: NYC, Paris, Berlin, Tokyo, São Paulo
 
