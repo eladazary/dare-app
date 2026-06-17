@@ -13,17 +13,17 @@ import { FONTS } from '@/constants/typography';
 // Types
 // ─────────────────────────────────────────────
 
-export type CipherStage = 'locked' | 'approaching' | 'close' | 'solved';
+export type TraceStage = 'locked' | 'approaching' | 'close' | 'solved';
 
 // Clue segments: plain text or a redacted block that lifts at a given stage.
 // Usage in clue string: "[R:approaching]the old clock tower[/R]"
 export type ClueSegment =
   | { type: 'text'; content: string }
-  | { type: 'redacted'; content: string; revealAt: CipherStage };
+  | { type: 'redacted'; content: string; revealAt: TraceStage };
 
-const STAGE_ORDER: CipherStage[] = ['locked', 'approaching', 'close', 'solved'];
+const STAGE_ORDER: TraceStage[] = ['locked', 'approaching', 'close', 'solved'];
 
-function stageGte(a: CipherStage, b: CipherStage) {
+function stageGte(a: TraceStage, b: TraceStage) {
   return STAGE_ORDER.indexOf(a) >= STAGE_ORDER.indexOf(b);
 }
 
@@ -40,7 +40,7 @@ export function parseClue(raw: string): ClueSegment[] {
     segments.push({
       type: 'redacted',
       content: match[2],
-      revealAt: match[1] as CipherStage,
+      revealAt: match[1] as TraceStage,
     });
     last = match.index + match[0].length;
   }
@@ -60,8 +60,8 @@ function RedactionBar({
   stage,
 }: {
   content: string;
-  revealAt: CipherStage;
-  stage: CipherStage;
+  revealAt: TraceStage;
+  stage: TraceStage;
 }) {
   const revealed = stageGte(stage, revealAt);
   const scaleX = useRef(new Animated.Value(revealed ? 0 : 1)).current;
@@ -100,16 +100,16 @@ function RedactionBar({
 }
 
 // ─────────────────────────────────────────────
-// CipherCard
+// TraceCard
 // ─────────────────────────────────────────────
 
-interface CipherCardProps {
+interface TraceCardProps {
   id: string;
   segments: ClueSegment[];
   difficulty: 'easy' | 'medium' | 'hard' | 'legendary';
   attemptsLeft: number;
   maxAttempts: number;
-  stage: CipherStage;
+  stage: TraceStage;
   distanceMeters?: number;
   onSubmit?: () => void;
 }
@@ -128,7 +128,7 @@ const DIFFICULTY_RADIUS: Record<string, string> = {
   legendary: '1KM',
 };
 
-export default function CipherCard({
+export default function TraceCard({
   id,
   segments,
   difficulty,
@@ -137,7 +137,7 @@ export default function CipherCard({
   stage,
   distanceMeters,
   onSubmit,
-}: CipherCardProps) {
+}: TraceCardProps) {
   const isSolved = stage === 'solved';
   const canSubmit = stage === 'close' || stage === 'solved';
 
@@ -152,7 +152,7 @@ export default function CipherCard({
 
       {/* Header row */}
       <View style={styles.headerRow}>
-        <Text style={styles.cipherId}>CIPHER #{id.slice(-4).toUpperCase()}</Text>
+        <Text style={styles.traceId}>TRACE #{id.slice(-4).toUpperCase()}</Text>
         {distanceMeters != null && (
           <Text style={styles.distance}>
             {distanceMeters < 1000
@@ -294,7 +294,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
-  cipherId: {
+  traceId: {
     fontFamily: FONTS.mono,
     fontSize: 10,
     color: COLORS.redaction,

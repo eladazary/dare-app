@@ -2,7 +2,7 @@
 
 ## What This Is
 
-**Tracer** is a city exploration app built around a single core loop: walk around, get notified that a Cipher is nearby, decode a cryptic clue about a real place, walk to it, take a selfie. Think Amazing Race meets Pokemon Go — the city is the game board.
+**Tracer** is a city exploration app built around a single core loop: walk around, get notified that a Trace is nearby, decode a cryptic clue about a real place, walk to it, take a selfie. Think Amazing Race meets Pokemon Go — the city is the game board.
 
 - **App name:** Tracer
 - **Domain:** runtracer.app
@@ -34,7 +34,7 @@ Classified:  #7B5EA7  (purple, AI verdict)
 Note: `SpaceGrotesk_800ExtraBold` does NOT exist in the package — always use `SpaceGrotesk_700Bold`.
 
 **Language (mission briefing tone):**
-- Location clue challenge → Cipher
+- Location clue challenge → Trace
 - Submit selfie → Submit proof
 - Streak → Run
 - Feed → Field Intel
@@ -74,7 +74,7 @@ Note: `SpaceGrotesk_800ExtraBold` does NOT exist in the package — always use `
 **The map is the most important screen.** Everything starts there.
 
 1. User walks around the city
-2. Gets a push notification: "A Cipher appeared 200m from you."
+2. Gets a push notification: "A Trace appeared 200m from you."
 3. Opens app → sees a glowing pin on the map
 4. Taps pin → reads the clue (a riddle about a specific real place nearby)
 5. Figures out which place the clue refers to
@@ -96,17 +96,17 @@ If a user runs out of attempts they can purchase 3 more to continue their streak
 
 ## Social Mechanics (the retention layer)
 
-All of these are built on top of the core loop — the map + Cipher is the game, these are what make it addictive.
+All of these are built on top of the core loop — the map + Trace is the game, these are what make it addictive.
 
 | Mechanic | How it works | Why it works |
 |---|---|---|
-| **Taunt** | After solving, one tap sends the same Cipher to a friend with your time as the benchmark. 48h to beat it. | Competitive ego, async |
-| **Live Race** | Both players start the same Cipher simultaneously. Real-time dots on map. First selfie wins. | Shared story |
+| **Taunt** | After solving, one tap sends the same Trace to a friend with your time as the benchmark. 48h to beat it. | Competitive ego, async |
+| **Live Race** | Both players start the same Trace simultaneously. Real-time dots on map. First selfie wins. | Shared story |
 | **Rescue** | Friend is on last attempt → you get notified → send them the hint → if THEY succeed, YOUR streak continues | Streak survival + acquisition |
-| **Ghost Trail** | After solving, a blurred pin appears on friends' maps for 24h. They can tap it to receive the same Cipher. | Passive FOMO, map life |
-| **Territory** | Most Ciphers solved in a zone = you own it. Squads defend collectively. Taking someone's territory notifies them. | Loss aversion, squad loyalty |
-| **Bounty Board** | Stake XP on an unsolved Cipher. First solver claims the pot. | City-wide FOMO |
-| **Synchronized Unlock** | Two friends both near the same area → special co-op Cipher unlocks | Serendipity |
+| **Ghost Trail** | After solving, a blurred pin appears on friends' maps for 24h. They can tap it to receive the same Trace. | Passive FOMO, map life |
+| **Territory** | Most Traces solved in a zone = you own it. Squads defend collectively. Taking someone's territory notifies them. | Loss aversion, squad loyalty |
+| **Bounty Board** | Stake XP on an unsolved Trace. First solver claims the pot. | City-wide FOMO |
+| **Synchronized Unlock** | Two friends both near the same area → special co-op Trace unlocks | Serendipity |
 
 **Key rescue rule:** streak credit only fires if the rescued person actually succeeds. This makes the rescue a real social contract — you're invested in their success.
 
@@ -117,12 +117,12 @@ All of these are built on top of the core loop — the map + Cipher is the game,
 Streak = at least 1 qualifying action every 3 days (not daily — location-based app needs flexibility).
 
 Qualifying actions:
-- Solve a Cipher yourself
+- Solve a Trace yourself
 - Rescue a friend who then successfully solves (streak credited on their success, not your send)
 
 ---
 
-## Cipher Content
+## Trace Content
 
 **Phase 1:** Hundreds of hand-curated clues about real places (landmarks, hidden spots, street details) in launch cities.
 
@@ -139,8 +139,8 @@ dare-app/
 ├── apps/mobile/              ← Expo React Native app
 │   ├── app/
 │   │   ├── (tabs)/
-│   │   │   ├── map.tsx       ← THE main screen — Cipher map
-│   │   │   ├── index.tsx     ← Field Intel feed (solved Ciphers, activity)
+│   │   │   ├── map.tsx       ← THE main screen — Trace map
+│   │   │   ├── index.tsx     ← Field Intel feed (solved Traces, activity)
 │   │   │   ├── events.tsx    ← Arena (live races, bounty board, territory)
 │   │   │   └── profile.tsx   ← Agent profile + streak + commendations
 │   │   ├── onboarding/
@@ -149,8 +149,8 @@ dare-app/
 │   │   │   └── permissions.tsx
 │   │   └── _layout.tsx       ← Root layout + auth gate
 │   ├── components/
-│   │   ├── CipherPin.tsx     ← Map pin with pulse animation
-│   │   ├── CipherCard.tsx    ← Clue reveal card
+│   │   ├── TracePin.tsx      ← Map pin with pulse animation
+│   │   ├── TraceCard.tsx     ← Clue reveal card
 │   │   ├── SelfieCapture.tsx ← Camera + GPS submit flow
 │   │   ├── GhostPin.tsx      ← Blurred friend trail on map
 │   │   ├── TerritoryOverlay.tsx ← Zone ownership on map
@@ -167,18 +167,18 @@ dare-app/
 │   │   └── badges.ts         ← Badge definitions
 │   ├── stores/               ← Zustand state
 │   │   ├── userStore.ts
-│   │   ├── cipherStore.ts    ← Active cipher, attempts, nearby pins
+│   │   ├── traceStore.ts     ← Active trace, attempts, nearby pins
 │   │   ├── feedStore.ts
 │   │   ├── socialStore.ts    ← Challenges, rescues, ghost trails
 │   │   └── territoryStore.ts
 │   ├── hooks/
-│   │   ├── useCiphers.ts     ← Nearby cipher fetching (PostGIS proximity)
+│   │   ├── useTraces.ts      ← Nearby trace fetching (PostGIS proximity)
 │   │   ├── useStreak.ts
 │   │   ├── useLeaderboard.ts
 │   │   └── useRealtimeFeed.ts
 │   └── lib/
 │       ├── supabase.ts       ← Supabase client
-│       └── api.ts            ← Cipher fetching + GPS submission
+│       └── api.ts            ← Trace fetching + GPS submission
 │
 ├── services/verification/    ← AWS Lambda
 │   ├── handler.ts            ← Main pipeline
@@ -195,11 +195,11 @@ dare-app/
 │   │   ├── 004_amazing_race.sql       ← ⚠️ DO NOT APPLY (shelved)
 │   │   ├── 005_social_mechanics.sql   ← Crews, referrals, squads
 │   │   ├── 006_challenge_templates.sql ← Legacy action-challenge templates (deprioritised)
-│   │   └── 007_ciphers.sql            ← ✅ CORE: Cipher mechanic + all social tables
+│   │   └── 007_traces.sql             ← ✅ CORE: Trace mechanic + all social tables
 │   ├── functions/
-│   │   ├── send-notifications/        ← Expo push: "A Cipher appeared near you"
+│   │   ├── send-notifications/        ← Expo push: "A Trace appeared near you"
 │   │   ├── get-upload-url/            ← R2 presigned selfie upload URLs
-│   │   ├── cipher-proximity/          ← Checks for nearby ciphers on user movement
+│   │   ├── trace-proximity/           ← Checks for nearby traces on user movement
 │   │   └── crew-xp/                   ← Passive squad XP
 │   └── seed.sql                       ← Tel Aviv + London test data
 │
@@ -270,20 +270,20 @@ R2_PUBLIC_URL=https://photos.thedare.app
    - 002_functions.sql
    - 003_realtime.sql
    - 005_social_mechanics.sql
-   - 007_ciphers.sql
+   - 007_traces.sql
 3. ⚠️ Skip 004_amazing_race.sql and 006_challenge_templates.sql for now
-4. Enable Realtime on: cipher_challenges, cipher_rescues, territories, bounties, ghost_trails
+4. Enable Realtime on: trace_challenges, trace_rescues, territories, bounties, ghost_trails
 5. Set secrets via Supabase dashboard or CLI
 
 ---
 
 ## What's Left to Build (Phase 1)
 
-- [ ] Seed hundreds of hand-curated Ciphers for Tel Aviv + London
-- [ ] Map screen with Cipher pins, ghost trails, territory overlays
-- [ ] Cipher card UI (clue reveal, attempt counter, selfie submit)
+- [ ] Seed hundreds of hand-curated Traces for Tel Aviv + London
+- [ ] Map screen with Trace pins, ghost trails, territory overlays
+- [ ] Trace card UI (clue reveal, attempt counter, selfie submit)
 - [ ] GPS + selfie verification pipeline (Lambda)
-- [ ] Push notification: "A Cipher appeared Xm from you"
+- [ ] Push notification: "A Trace appeared Xm from you"
 - [ ] Taunt flow (challenge a friend after solving)
 - [ ] Rescue flow (last-attempt notification + hint send)
 - [ ] Streak display + 3-day cadence logic
@@ -299,7 +299,7 @@ R2_PUBLIC_URL=https://photos.thedare.app
 - Territory UI (map overlay)
 - Bounty board
 - Synchronized unlock
-- AI cipher generation from POI data
+- AI trace generation from POI data
 - Android build (iOS first)
 - Payment flow for extra attempts (Stripe)
 - Gone+/Dare+ subscription

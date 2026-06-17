@@ -43,7 +43,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Tracer uses your location to show ciphers nearby."
+          "locationWhenInUsePermission": "Tracer uses your location to show traces nearby."
         }
       ],
       [

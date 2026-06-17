@@ -5,7 +5,7 @@ import { FONTS } from '@/constants/typography';
 
 export type PinState = 'undiscovered' | 'active' | 'solved' | 'ghost';
 
-interface CipherPinProps {
+interface TracePinProps {
   state?: PinState;
   distanceMeters?: number;
   onPress?: () => void;
@@ -18,11 +18,11 @@ const PIN_COLOR: Record<PinState, string> = {
   ghost: COLORS.concrete,
 };
 
-export default function CipherPin({
+export default function TracePin({
   state = 'undiscovered',
   distanceMeters,
   onPress,
-}: CipherPinProps) {
+}: TracePinProps) {
   const pulse1 = useRef(new Animated.Value(1)).current;
   const pulse2 = useRef(new Animated.Value(1)).current;
   const pulseOpacity1 = useRef(new Animated.Value(0.6)).current;

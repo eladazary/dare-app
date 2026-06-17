@@ -1,18 +1,18 @@
--- 007_ciphers.sql
--- Core Cipher mechanic: location-based clue hunting.
--- Walk around → Cipher appears nearby → decode clue → find the place → selfie.
+-- 007_traces.sql
+-- Core Trace mechanic: location-based clue hunting.
+-- Walk around → Trace appears nearby → decode clue → find the place → selfie.
 -- Everything else (taunt, live race, rescue, territory, bounty) is the social layer on top.
 
 -- PostGIS for proximity queries
 create extension if not exists postgis;
 
 -- ─────────────────────────────────────────────
--- CIPHERS — the core content unit
--- A Cipher is a riddle about a real place. The user must
+-- TRACES — the core content unit
+-- A Trace is a riddle about a real place. The user must
 -- decode the clue, walk to that place, and take a selfie there.
 -- The place_name is never revealed until the user solves it.
 -- ─────────────────────────────────────────────
-create table ciphers (
+create table traces (
   id                     uuid primary key default gen_random_uuid(),
   arena_id               uuid references cities(id),
   location               geography(Point, 4326) not null,
@@ -37,15 +37,15 @@ create table ciphers (
 -- hard:      solve 100m, notify 600m
 -- legendary: solve 200m, notify 1000m
 
-create index ciphers_location_idx   on ciphers using gist(location);
-create index ciphers_arena_active_idx on ciphers(arena_id, is_active);
+create index traces_location_idx   on traces using gist(location);
+create index traces_arena_active_idx on traces(arena_id, is_active);
 
 -- ─────────────────────────────────────────────
--- CIPHER ATTEMPTS — each guess a user makes
+-- TRACE ATTEMPTS — each guess a user makes
 -- ─────────────────────────────────────────────
-create table cipher_attempts (
+create table trace_attempts (
   id               uuid primary key default gen_random_uuid(),
-  cipher_id        uuid references ciphers(id) on delete cascade,
+  trace_id         uuid references traces(id) on delete cascade,
   user_id          uuid references users(id) on delete cascade,
   challenge_id     uuid,               -- set if part of a taunt/live race
   attempt_number   integer not null,
@@ -56,46 +56,46 @@ create table cipher_attempts (
   created_at       timestamptz default now()
 );
 
-create index cipher_attempts_user_cipher_idx on cipher_attempts(user_id, cipher_id);
+create index trace_attempts_user_trace_idx on trace_attempts(user_id, trace_id);
 
 -- ─────────────────────────────────────────────
--- CIPHER SOLVES — successful finds (denormalised for fast reads)
+-- TRACE SOLVES — successful finds (denormalised for fast reads)
 -- ─────────────────────────────────────────────
-create table cipher_solves (
+create table trace_solves (
   id                    uuid primary key default gen_random_uuid(),
-  cipher_id             uuid references ciphers(id) on delete cascade,
+  trace_id              uuid references traces(id) on delete cascade,
   user_id               uuid references users(id) on delete cascade,
   challenge_id          uuid,
   time_to_solve_seconds integer,
   attempts_used         integer not null,
   selfie_url            text not null,
   created_at            timestamptz default now(),
-  unique(cipher_id, user_id)
+  unique(trace_id, user_id)
 );
 
-create index cipher_solves_user_idx   on cipher_solves(user_id, created_at desc);
-create index cipher_solves_cipher_idx on cipher_solves(cipher_id);
+create index trace_solves_user_idx   on trace_solves(user_id, created_at desc);
+create index trace_solves_trace_idx  on trace_solves(trace_id);
 
 -- ─────────────────────────────────────────────
--- CIPHER EXTRA ATTEMPTS — monetisation
+-- TRACE EXTRA ATTEMPTS — monetisation
 -- Users can buy 3 more attempts when they run out.
 -- ─────────────────────────────────────────────
-create table cipher_extra_attempts (
+create table trace_extra_attempts (
   id                  uuid primary key default gen_random_uuid(),
-  cipher_id           uuid references ciphers(id) on delete cascade,
+  trace_id            uuid references traces(id) on delete cascade,
   user_id             uuid references users(id) on delete cascade,
   attempts_purchased  integer not null default 3,
   created_at          timestamptz default now()
 );
 
 -- ─────────────────────────────────────────────
--- CIPHER CHALLENGES — taunt + live race
+-- TRACE CHALLENGES — taunt + live race
 -- taunt:     challenger solved it, sends benchmark time; challenged has 48h
 -- live_race: both start simultaneously, first selfie wins
 -- ─────────────────────────────────────────────
-create table cipher_challenges (
+create table trace_challenges (
   id                        uuid primary key default gen_random_uuid(),
-  cipher_id                 uuid references ciphers(id) on delete cascade,
+  trace_id                  uuid references traces(id) on delete cascade,
   challenger_id             uuid references users(id) on delete cascade,
   challenged_id             uuid references users(id) on delete cascade,
   type                      text not null check (type in ('taunt', 'live_race')),
@@ -107,17 +107,17 @@ create table cipher_challenges (
   created_at                timestamptz default now()
 );
 
-create index cipher_challenges_challenged_idx on cipher_challenges(challenged_id, status);
-create index cipher_challenges_challenger_idx on cipher_challenges(challenger_id, status);
+create index trace_challenges_challenged_idx on trace_challenges(challenged_id, status);
+create index trace_challenges_challenger_idx on trace_challenges(challenger_id, status);
 
 -- ─────────────────────────────────────────────
--- CIPHER RESCUES
+-- TRACE RESCUES
 -- When a friend is on their last attempt, you can rescue them
 -- by sending the hint. Your streak is credited ONLY if they succeed.
 -- ─────────────────────────────────────────────
-create table cipher_rescues (
+create table trace_rescues (
   id                       uuid primary key default gen_random_uuid(),
-  cipher_id                uuid references ciphers(id) on delete cascade,
+  trace_id                 uuid references traces(id) on delete cascade,
   rescuer_id               uuid references users(id) on delete cascade,
   rescued_id               uuid references users(id) on delete cascade,
   hint                     text not null,
@@ -127,12 +127,12 @@ create table cipher_rescues (
   created_at               timestamptz default now()
 );
 
-create index cipher_rescues_rescuer_idx on cipher_rescues(rescuer_id);
-create index cipher_rescues_rescued_idx on cipher_rescues(rescued_id, expires_at);
+create index trace_rescues_rescuer_idx on trace_rescues(rescuer_id);
+create index trace_rescues_rescued_idx on trace_rescues(rescued_id, expires_at);
 
 -- ─────────────────────────────────────────────
 -- TERRITORIES — zone ownership
--- Whoever solves the most Ciphers in a zone owns it.
+-- Whoever solves the most Traces in a zone owns it.
 -- Squads can collectively defend territory.
 -- ─────────────────────────────────────────────
 create table territories (
@@ -153,11 +153,11 @@ create index territories_arena_idx    on territories(arena_id);
 
 -- ─────────────────────────────────────────────
 -- BOUNTY BOARD
--- Users stake XP on unsolved Ciphers. First solver claims the pot.
+-- Users stake XP on unsolved Traces. First solver claims the pot.
 -- ─────────────────────────────────────────────
 create table bounties (
   id          uuid primary key default gen_random_uuid(),
-  cipher_id   uuid references ciphers(id) on delete cascade,
+  trace_id    uuid references traces(id) on delete cascade,
   posted_by   uuid references users(id) on delete cascade,
   xp_stake    integer not null check (xp_stake > 0),
   claimed_by  uuid references users(id),
@@ -167,17 +167,17 @@ create table bounties (
   created_at  timestamptz default now()
 );
 
-create index bounties_cipher_idx on bounties(cipher_id, status);
+create index bounties_trace_idx  on bounties(trace_id, status);
 create index bounties_active_idx on bounties(status, expires_at);
 
 -- ─────────────────────────────────────────────
 -- GHOST TRAIL
 -- After solving, a blurred pin is visible to friends for 24h.
--- Friends can tap it to receive the same Cipher.
+-- Friends can tap it to receive the same Trace.
 -- ─────────────────────────────────────────────
 create table ghost_trails (
   id              uuid primary key default gen_random_uuid(),
-  cipher_id       uuid references ciphers(id) on delete cascade,
+  trace_id        uuid references traces(id) on delete cascade,
   user_id         uuid references users(id) on delete cascade,
   approx_location geography(Point, 4326) not null,  -- fuzzed ±50m from actual
   expires_at      timestamptz not null default (now() + interval '24 hours'),
@@ -193,7 +193,7 @@ create index ghost_trails_expiry_idx   on ghost_trails(expires_at);
 alter table users
   add column if not exists streak_days            integer default 0,
   add column if not exists streak_last_activity   timestamptz,
-  add column if not exists total_ciphers_solved   integer default 0,
+  add column if not exists total_traces_solved    integer default 0,
   add column if not exists territory_count        integer default 0;
 
 -- ─────────────────────────────────────────────
@@ -212,14 +212,14 @@ begin
       else 1
     end,
     streak_last_activity  = now(),
-    total_ciphers_solved  = total_ciphers_solved + 1
+    total_traces_solved   = total_traces_solved + 1
   where id = new.user_id;
   return new;
 end;
 $$ language plpgsql security definer;
 
-create trigger cipher_solved_streak
-  after insert on cipher_solves
+create trigger trace_solved_streak
+  after insert on trace_solves
   for each row execute function update_streak_on_solve();
 
 -- ─────────────────────────────────────────────
@@ -244,7 +244,7 @@ begin
       streak_last_activity = now()
     where id = new.rescuer_id;
 
-    update cipher_rescues
+    update trace_rescues
     set rescuer_streak_credited = true
     where id = new.id;
   end if;
@@ -253,23 +253,23 @@ end;
 $$ language plpgsql security definer;
 
 create trigger rescue_success_streak
-  after update of rescued_success on cipher_rescues
+  after update of rescued_success on trace_rescues
   for each row execute function credit_rescuer_streak();
 
 -- ─────────────────────────────────────────────
 -- SOLVE COUNT TRIGGER
 -- ─────────────────────────────────────────────
-create or replace function increment_cipher_solve_count()
+create or replace function increment_trace_solve_count()
 returns trigger as $$
 begin
-  update ciphers set solve_count = solve_count + 1 where id = new.cipher_id;
+  update traces set solve_count = solve_count + 1 where id = new.trace_id;
   return new;
 end;
 $$ language plpgsql security definer;
 
-create trigger cipher_solve_count
-  after insert on cipher_solves
-  for each row execute function increment_cipher_solve_count();
+create trigger trace_solve_count
+  after insert on trace_solves
+  for each row execute function increment_trace_solve_count();
 
 -- ─────────────────────────────────────────────
 -- GHOST TRAIL TRIGGER — auto-create on solve
@@ -277,16 +277,16 @@ create trigger cipher_solve_count
 create or replace function create_ghost_trail()
 returns trigger as $$
 declare
-  cipher_loc geography(Point, 4326);
+  trace_loc geography(Point, 4326);
 begin
-  select location into cipher_loc from ciphers where id = new.cipher_id;
-  insert into ghost_trails(cipher_id, user_id, approx_location)
+  select location into trace_loc from traces where id = new.trace_id;
+  insert into ghost_trails(trace_id, user_id, approx_location)
   values (
-    new.cipher_id,
+    new.trace_id,
     new.user_id,
     -- fuzz location by ±50m in a random direction
     ST_Translate(
-      cipher_loc::geometry,
+      trace_loc::geometry,
       (random() - 0.5) * 0.001,
       (random() - 0.5) * 0.001
     )::geography
@@ -295,15 +295,15 @@ begin
 end;
 $$ language plpgsql security definer;
 
-create trigger cipher_ghost_trail
-  after insert on cipher_solves
+create trigger trace_ghost_trail
+  after insert on trace_solves
   for each row execute function create_ghost_trail();
 
 -- ─────────────────────────────────────────────
 -- REALTIME
 -- ─────────────────────────────────────────────
-alter publication supabase_realtime add table cipher_challenges;
-alter publication supabase_realtime add table cipher_rescues;
+alter publication supabase_realtime add table trace_challenges;
+alter publication supabase_realtime add table trace_rescues;
 alter publication supabase_realtime add table territories;
 alter publication supabase_realtime add table bounties;
 alter publication supabase_realtime add table ghost_trails;

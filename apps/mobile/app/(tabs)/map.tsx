@@ -10,14 +10,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '@/constants/colors';
 import { FONTS } from '@/constants/typography';
-import CipherCard, { parseClue, type CipherStage } from '@/components/CipherCard';
-import CipherPin from '@/components/CipherPin';
+import TraceCard, { parseClue, type TraceStage } from '@/components/TraceCard';
+import TracePin from '@/components/TracePin';
 
 // ─────────────────────────────────────────────
 // Mock data
 // ─────────────────────────────────────────────
 
-const MOCK_ACTIVE_CIPHER = {
+const MOCK_ACTIVE_TRACE = {
   id: 'a3f7c2e1',
   clue: [
     'I have stood at this corner since ',
@@ -63,9 +63,9 @@ const DIFF_COLOR: Record<string, string> = {
 export default function MapScreen() {
   const [activeTab, setActiveTab] = useState<'hunt' | 'territory'>('hunt');
   // Cycle through stages for demo
-  const [stage, setStage] = useState<CipherStage>('approaching');
+  const [stage, setStage] = useState<TraceStage>('approaching');
 
-  const segments = parseClue(MOCK_ACTIVE_CIPHER.clue);
+  const segments = parseClue(MOCK_ACTIVE_TRACE.clue);
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
@@ -93,7 +93,7 @@ export default function MapScreen() {
               activeOpacity={0.7}
             >
               <Text style={[styles.tabText, activeTab === t && styles.tabTextActive]}>
-                {t === 'hunt' ? 'CIPHER HUNT' : 'MY TERRITORY'}
+                {t === 'hunt' ? 'TRACE HUNT' : 'MY TERRITORY'}
               </Text>
               {activeTab === t && <View style={styles.tabUnderline} />}
             </TouchableOpacity>
@@ -106,26 +106,26 @@ export default function MapScreen() {
         {activeTab === 'hunt' && (
           <View>
 
-            {/* ── Active cipher ── */}
+            {/* ── Active trace ── */}
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionLabel}>ACTIVE CIPHER</Text>
+              <Text style={styles.sectionLabel}>ACTIVE TRACE</Text>
               <View style={styles.activeDot} />
             </View>
 
-            <CipherCard
-              id={MOCK_ACTIVE_CIPHER.id}
+            <TraceCard
+              id={MOCK_ACTIVE_TRACE.id}
               segments={segments}
-              difficulty={MOCK_ACTIVE_CIPHER.difficulty}
-              attemptsLeft={MOCK_ACTIVE_CIPHER.attemptsLeft}
-              maxAttempts={MOCK_ACTIVE_CIPHER.maxAttempts}
+              difficulty={MOCK_ACTIVE_TRACE.difficulty}
+              attemptsLeft={MOCK_ACTIVE_TRACE.attemptsLeft}
+              maxAttempts={MOCK_ACTIVE_TRACE.maxAttempts}
               stage={stage}
-              distanceMeters={MOCK_ACTIVE_CIPHER.distanceMeters}
+              distanceMeters={MOCK_ACTIVE_TRACE.distanceMeters}
               onSubmit={() => {}}
             />
 
             {/* Stage stepper — demo only */}
             <View style={styles.stageStepper}>
-              {(['locked', 'approaching', 'close', 'solved'] as CipherStage[]).map((s) => (
+              {(['locked', 'approaching', 'close', 'solved'] as TraceStage[]).map((s) => (
                 <TouchableOpacity
                   key={s}
                   style={[styles.stageBtn, stage === s && styles.stageBtnActive]}
@@ -141,13 +141,13 @@ export default function MapScreen() {
 
             {/* ── Nearby pins visual ── */}
             <View style={styles.pinsRow}>
-              <CipherPin state="active" distanceMeters={94} />
-              <CipherPin state="undiscovered" distanceMeters={180} />
-              <CipherPin state="undiscovered" distanceMeters={340} />
-              <CipherPin state="ghost" distanceMeters={210} />
-              <CipherPin state="solved" />
+              <TracePin state="active" distanceMeters={94} />
+              <TracePin state="undiscovered" distanceMeters={180} />
+              <TracePin state="undiscovered" distanceMeters={340} />
+              <TracePin state="ghost" distanceMeters={210} />
+              <TracePin state="solved" />
             </View>
-            <Text style={styles.pinsHint}>5 ciphers in range · 1 ghost trail nearby</Text>
+            <Text style={styles.pinsHint}>5 traces in range · 1 ghost trail nearby</Text>
 
             {/* ── Nearby list ── */}
             <View style={styles.sectionHeader}>
@@ -160,7 +160,7 @@ export default function MapScreen() {
                   <View style={[styles.nearbyDot, { backgroundColor: DIFF_COLOR[c.difficulty] }]} />
                   <View>
                     <Text style={styles.nearbyLabel}>
-                      {c.difficulty === 'legendary' ? '???' : `CIPHER #${c.id.slice(-4).toUpperCase()}`}
+                      {c.difficulty === 'legendary' ? '???' : `TRACE #${c.id.slice(-4).toUpperCase()}`}
                     </Text>
                     <Text style={styles.nearbyDiff}>
                       {c.difficulty.toUpperCase()}
@@ -198,7 +198,7 @@ export default function MapScreen() {
                 />
               </View>
               <Text style={styles.territoryProgress}>
-                {MOCK_TERRITORY.solveCount} / {MOCK_TERRITORY.totalInZone} ciphers solved
+                {MOCK_TERRITORY.solveCount} / {MOCK_TERRITORY.totalInZone} traces solved
               </Text>
             </View>
 
