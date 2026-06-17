@@ -8,6 +8,7 @@ export type NearbyTrace = {
   lat: number;
   lng: number;
   clue: string;
+  place_name: string;
   difficulty: 'easy' | 'medium' | 'hard' | 'legendary';
   solve_radius_meters: number;
   notify_radius_meters: number;

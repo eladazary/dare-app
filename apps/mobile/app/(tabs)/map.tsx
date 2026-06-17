@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Dimensions,
   ActivityIndicator,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
@@ -15,7 +14,10 @@ import { COLORS } from '@/constants/colors';
 import { FONTS } from '@/constants/typography';
 import TraceCard, { parseClue, type TraceStage } from '@/components/TraceCard';
 import TracePin from '@/components/TracePin';
+import SelfieCapture from '@/components/SelfieCapture';
+import SolveReveal from '@/components/SolveReveal';
 import { useLocation, useNearbyTraces, type NearbyTrace } from '@/hooks/useTraces';
+import { supabase } from '@/lib/supabase';
 
 const DARK_MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#0A0A0A' }] },
@@ -28,6 +30,18 @@ const DARK_MAP_STYLE = [
   { featureType: 'poi', stylers: [{ visibility: 'off' }] },
   { featureType: 'transit', stylers: [{ visibility: 'off' }] },
 ];
+
+function getDistance(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 function difficultyToStage(
   distanceM: number,
@@ -44,26 +58,67 @@ export default function MapScreen() {
   const sheetRef = useRef<any>(null);
 
   const { location, error: locationError, granted } = useLocation();
-  const { data: traces = [], isLoading } = useNearbyTraces(location);
+  const { data: traces = [], isLoading, refetch } = useNearbyTraces(location);
 
   const [activeTrace, setActiveTrace] = useState<NearbyTrace | null>(null);
   const [attemptsLeft, setAttemptsLeft] = useState(3);
+  const [showCamera, setShowCamera] = useState(false);
+  const [solveResult, setSolveResult] = useState<{ selfieUri: string; startedAt: number } | null>(null);
+  const startedAtRef = useRef<number>(0);
 
   const openTrace = useCallback((trace: NearbyTrace) => {
     setActiveTrace(trace);
     setAttemptsLeft(trace.max_attempts);
+    startedAtRef.current = Date.now();
     sheetRef.current?.expand();
   }, []);
 
   const closeTrace = useCallback(() => {
     sheetRef.current?.close();
     setActiveTrace(null);
+    setSolveResult(null);
   }, []);
 
   const handleSubmit = useCallback(() => {
-    // Week 5: camera + GPS verify flow
-    console.log('submit proof for trace', activeTrace?.id);
-  }, [activeTrace]);
+    setShowCamera(true);
+  }, []);
+
+  const handleCapture = useCallback(async (selfieUri: string) => {
+    if (!activeTrace || !location) return;
+    setShowCamera(false);
+
+    const distNow = getDistance(
+      location.lat, location.lng,
+      activeTrace.lat, activeTrace.lng
+    );
+
+    if (distNow > activeTrace.solve_radius_meters) {
+      setAttemptsLeft((n) => Math.max(0, n - 1));
+      return;
+    }
+
+    // Write solve to DB (best-effort — preview mode may have no user)
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const elapsed = Math.round((Date.now() - startedAtRef.current) / 1000);
+      await supabase.from('trace_solves').upsert({
+        trace_id: activeTrace.id,
+        user_id: user.id,
+        attempts_used: activeTrace.max_attempts - attemptsLeft + 1,
+        time_to_solve_seconds: elapsed,
+        selfie_url: selfieUri,
+      }, { onConflict: 'trace_id,user_id' });
+    }
+
+    setSolveResult({ selfieUri, startedAt: startedAtRef.current });
+    sheetRef.current?.close();
+  }, [activeTrace, location, attemptsLeft]);
+
+  const handleContinue = useCallback(() => {
+    setSolveResult(null);
+    setActiveTrace(null);
+    refetch();
+  }, [refetch]);
 
   if (!granted && locationError) {
     return (
@@ -169,6 +224,28 @@ export default function MapScreen() {
           </View>
         )}
       </SafeAreaView>
+
+      {/* Camera overlay */}
+      {showCamera && activeTrace && (
+        <SelfieCapture
+          distanceMeters={activeTrace.distance_meters}
+          solveRadius={activeTrace.solve_radius_meters}
+          onCapture={handleCapture}
+          onCancel={() => setShowCamera(false)}
+        />
+      )}
+
+      {/* Solve success reveal */}
+      {solveResult && activeTrace && (
+        <SolveReveal
+          placeName={activeTrace.place_name ?? 'Unknown place'}
+          difficulty={activeTrace.difficulty}
+          selfieUri={solveResult.selfieUri}
+          timeSeconds={Math.round((Date.now() - solveResult.startedAt) / 1000)}
+          onTaunt={() => {}}
+          onContinue={handleContinue}
+        />
+      )}
 
       {/* TraceCard bottom sheet */}
       <BottomSheet
