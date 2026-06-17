@@ -1,524 +1,323 @@
-import React, { useState } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
-  ScrollView,
-  TouchableOpacity,
   StyleSheet,
+  TouchableOpacity,
+  Dimensions,
+  ActivityIndicator,
 } from 'react-native';
+import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 
 import { COLORS } from '@/constants/colors';
 import { FONTS } from '@/constants/typography';
 import TraceCard, { parseClue, type TraceStage } from '@/components/TraceCard';
 import TracePin from '@/components/TracePin';
+import { useLocation, useNearbyTraces, type NearbyTrace } from '@/hooks/useTraces';
 
-// ─────────────────────────────────────────────
-// Mock data
-// ─────────────────────────────────────────────
-
-const MOCK_ACTIVE_TRACE = {
-  id: 'a3f7c2e1',
-  clue: [
-    'I have stood at this corner since ',
-    '[R:approaching]1887[/R]',
-    ', watching every sunrise without ever moving. The ',
-    '[R:close]oldest thing here[/R]',
-    ' that is not a building. I have a name nobody uses anymore.',
-  ].join(''),
-  difficulty: 'hard' as const,
-  attemptsLeft: 2,
-  maxAttempts: 3,
-  distanceMeters: 94,
-};
-
-const MOCK_NEARBY = [
-  { id: 'b1d4e9f2', difficulty: 'easy' as const, distanceMeters: 180, label: 'The market entrance' },
-  { id: 'c8a2f0e5', difficulty: 'medium' as const, distanceMeters: 340, label: 'Under the bridge' },
-  { id: 'd5c1b7a3', difficulty: 'legendary' as const, distanceMeters: 820, label: '???' },
+const DARK_MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#0A0A0A' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#8A8A8A' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#0A0A0A' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1E1E1E' }] },
+  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#222222' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#2A2A2A' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#060606' }] },
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
 ];
 
-const MOCK_TERRITORY = {
-  zoneName: 'Florentin',
-  solveCount: 7,
-  totalInZone: 12,
-  rank: 1,
-};
-
-// ─────────────────────────────────────────────
-// Difficulty colour helper
-// ─────────────────────────────────────────────
-
-const DIFF_COLOR: Record<string, string> = {
-  easy: COLORS.green,
-  medium: COLORS.amber,
-  hard: COLORS.classified,
-  legendary: COLORS.purple,
-};
-
-// ─────────────────────────────────────────────
-// Screen
-// ─────────────────────────────────────────────
-
-export default function MapScreen() {
-  const [activeTab, setActiveTab] = useState<'hunt' | 'territory'>('hunt');
-  // Cycle through stages for demo
-  const [stage, setStage] = useState<TraceStage>('approaching');
-
-  const segments = parseClue(MOCK_ACTIVE_TRACE.clue);
-
-  return (
-    <SafeAreaView style={styles.root} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-
-        {/* ── Header ── */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.headerLabel}>FIELD OPS</Text>
-            <Text style={styles.headerTitle}>Hunt</Text>
-          </View>
-          <View style={styles.headerRight}>
-            <Text style={styles.streakLabel}>RUN</Text>
-            <Text style={styles.streakCount}>14</Text>
-          </View>
-        </View>
-
-        {/* ── Tabs ── */}
-        <View style={styles.tabs}>
-          {(['hunt', 'territory'] as const).map((t) => (
-            <TouchableOpacity
-              key={t}
-              style={styles.tab}
-              onPress={() => setActiveTab(t)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.tabText, activeTab === t && styles.tabTextActive]}>
-                {t === 'hunt' ? 'TRACE HUNT' : 'MY TERRITORY'}
-              </Text>
-              {activeTab === t && <View style={styles.tabUnderline} />}
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* ════════════════════════
-            HUNT TAB
-        ════════════════════════ */}
-        {activeTab === 'hunt' && (
-          <View>
-
-            {/* ── Active trace ── */}
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionLabel}>ACTIVE TRACE</Text>
-              <View style={styles.activeDot} />
-            </View>
-
-            <TraceCard
-              id={MOCK_ACTIVE_TRACE.id}
-              segments={segments}
-              difficulty={MOCK_ACTIVE_TRACE.difficulty}
-              attemptsLeft={MOCK_ACTIVE_TRACE.attemptsLeft}
-              maxAttempts={MOCK_ACTIVE_TRACE.maxAttempts}
-              stage={stage}
-              distanceMeters={MOCK_ACTIVE_TRACE.distanceMeters}
-              onSubmit={() => {}}
-            />
-
-            {/* Stage stepper — demo only */}
-            <View style={styles.stageStepper}>
-              {(['locked', 'approaching', 'close', 'solved'] as TraceStage[]).map((s) => (
-                <TouchableOpacity
-                  key={s}
-                  style={[styles.stageBtn, stage === s && styles.stageBtnActive]}
-                  onPress={() => setStage(s)}
-                >
-                  <Text style={[styles.stageBtnText, stage === s && styles.stageBtnTextActive]}>
-                    {s.toUpperCase()}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={styles.stageHint}>↑ demo: tap to simulate proximity</Text>
-
-            {/* ── Nearby pins visual ── */}
-            <View style={styles.pinsRow}>
-              <TracePin state="active" distanceMeters={94} />
-              <TracePin state="undiscovered" distanceMeters={180} />
-              <TracePin state="undiscovered" distanceMeters={340} />
-              <TracePin state="ghost" distanceMeters={210} />
-              <TracePin state="solved" />
-            </View>
-            <Text style={styles.pinsHint}>5 traces in range · 1 ghost trail nearby</Text>
-
-            {/* ── Nearby list ── */}
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionLabel}>NEARBY</Text>
-            </View>
-
-            {MOCK_NEARBY.map((c) => (
-              <TouchableOpacity key={c.id} style={styles.nearbyCard} activeOpacity={0.8}>
-                <View style={styles.nearbyLeft}>
-                  <View style={[styles.nearbyDot, { backgroundColor: DIFF_COLOR[c.difficulty] }]} />
-                  <View>
-                    <Text style={styles.nearbyLabel}>
-                      {c.difficulty === 'legendary' ? '???' : `TRACE #${c.id.slice(-4).toUpperCase()}`}
-                    </Text>
-                    <Text style={styles.nearbyDiff}>
-                      {c.difficulty.toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.nearbyRight}>
-                  <Text style={[styles.nearbyDistance, { color: DIFF_COLOR[c.difficulty] }]}>
-                    {c.distanceMeters}M
-                  </Text>
-                  <Text style={styles.nearbyArrow}>›</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {/* ════════════════════════
-            TERRITORY TAB
-        ════════════════════════ */}
-        {activeTab === 'territory' && (
-          <View>
-            <View style={styles.territoryCard}>
-              <Text style={styles.territoryZone}>{MOCK_TERRITORY.zoneName}</Text>
-              <View style={styles.territoryRankRow}>
-                <Text style={styles.territoryRank}>#{MOCK_TERRITORY.rank}</Text>
-                <Text style={styles.territoryRankLabel}> IN ZONE</Text>
-              </View>
-              <View style={styles.territoryBar}>
-                <View
-                  style={[
-                    styles.territoryBarFill,
-                    { width: `${(MOCK_TERRITORY.solveCount / MOCK_TERRITORY.totalInZone) * 100}%` },
-                  ]}
-                />
-              </View>
-              <Text style={styles.territoryProgress}>
-                {MOCK_TERRITORY.solveCount} / {MOCK_TERRITORY.totalInZone} traces solved
-              </Text>
-            </View>
-
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionLabel}>ZONE ACTIVITY</Text>
-            </View>
-
-            {/* Placeholder grid */}
-            <View style={styles.photoGrid}>
-              {Array.from({ length: 9 }).map((_, i) => (
-                <View key={i} style={styles.photoCell}>
-                  <View style={styles.photoCellInner}>
-                    <Text style={styles.photoCellIcon}>📍</Text>
-                    <View
-                      style={[
-                        styles.photoCellDot,
-                        {
-                          backgroundColor:
-                            i % 3 === 0 ? COLORS.amber : i % 3 === 1 ? COLORS.green : COLORS.concrete,
-                        },
-                      ]}
-                    />
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-      </ScrollView>
-    </SafeAreaView>
-  );
+function difficultyToStage(
+  distanceM: number,
+  solveRadius: number,
+  notifyRadius: number
+): TraceStage {
+  if (distanceM <= solveRadius) return 'close';
+  if (distanceM <= notifyRadius * 0.5) return 'approaching';
+  return 'locked';
 }
 
-// ─────────────────────────────────────────────
-// Styles
-// ─────────────────────────────────────────────
+export default function MapScreen() {
+  const mapRef = useRef<MapView>(null);
+  const sheetRef = useRef<any>(null);
+
+  const { location, error: locationError, granted } = useLocation();
+  const { data: traces = [], isLoading } = useNearbyTraces(location);
+
+  const [activeTrace, setActiveTrace] = useState<NearbyTrace | null>(null);
+  const [attemptsLeft, setAttemptsLeft] = useState(3);
+
+  const openTrace = useCallback((trace: NearbyTrace) => {
+    setActiveTrace(trace);
+    setAttemptsLeft(trace.max_attempts);
+    sheetRef.current?.expand();
+  }, []);
+
+  const closeTrace = useCallback(() => {
+    sheetRef.current?.close();
+    setActiveTrace(null);
+  }, []);
+
+  const handleSubmit = useCallback(() => {
+    // Week 5: camera + GPS verify flow
+    console.log('submit proof for trace', activeTrace?.id);
+  }, [activeTrace]);
+
+  if (!granted && locationError) {
+    return (
+      <View style={styles.centerFill}>
+        <Text style={styles.errorText}>Location access needed to find traces.</Text>
+      </View>
+    );
+  }
+
+  if (!location) {
+    return (
+      <View style={styles.centerFill}>
+        <ActivityIndicator color={COLORS.amber} size="large" />
+        <Text style={styles.loadingText}>ACQUIRING LOCATION...</Text>
+      </View>
+    );
+  }
+
+  const stage: TraceStage = activeTrace
+    ? activeTrace.already_solved
+      ? 'solved'
+      : difficultyToStage(
+          activeTrace.distance_meters,
+          activeTrace.solve_radius_meters,
+          activeTrace.notify_radius_meters
+        )
+    : 'locked';
+
+  return (
+    <View style={styles.root}>
+      {/* Full-screen dark map */}
+      <MapView
+        ref={mapRef}
+        style={StyleSheet.absoluteFill}
+        provider={PROVIDER_DEFAULT}
+        customMapStyle={DARK_MAP_STYLE}
+        userInterfaceStyle="dark"
+        showsUserLocation
+        showsMyLocationButton={false}
+        showsCompass={false}
+        showsScale={false}
+        initialRegion={{
+          latitude: location.lat,
+          longitude: location.lng,
+          latitudeDelta: 0.012,
+          longitudeDelta: 0.012,
+        }}
+      >
+        {traces.map((trace) => (
+          <Marker
+            key={trace.id}
+            coordinate={{ latitude: trace.lat, longitude: trace.lng }}
+            onPress={() => openTrace(trace)}
+            anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={false}
+          >
+            <TracePin
+              state={
+                trace.already_solved
+                  ? 'solved'
+                  : trace.distance_meters <= trace.notify_radius_meters
+                  ? 'active'
+                  : 'undiscovered'
+              }
+              distanceMeters={Math.round(trace.distance_meters)}
+            />
+          </Marker>
+        ))}
+      </MapView>
+
+      {/* HUD overlay */}
+      <SafeAreaView style={styles.hud} edges={['top']} pointerEvents="box-none">
+        <View style={styles.hudRow}>
+          <View style={styles.hudLeft}>
+            <Text style={styles.hudLabel}>TRACES NEARBY</Text>
+            <Text style={styles.hudCount}>
+              {isLoading ? '—' : traces.filter((t) => !t.already_solved).length}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.recenterBtn}
+            onPress={() =>
+              mapRef.current?.animateToRegion(
+                {
+                  latitude: location.lat,
+                  longitude: location.lng,
+                  latitudeDelta: 0.008,
+                  longitudeDelta: 0.008,
+                },
+                400
+              )
+            }
+          >
+            <Text style={styles.recenterIcon}>◎</Text>
+          </TouchableOpacity>
+        </View>
+
+        {isLoading && (
+          <View style={styles.scanningBadge}>
+            <ActivityIndicator color={COLORS.amber} size="small" />
+            <Text style={styles.scanningText}>SCANNING AREA...</Text>
+          </View>
+        )}
+      </SafeAreaView>
+
+      {/* TraceCard bottom sheet */}
+      <BottomSheet
+        ref={sheetRef}
+        index={-1}
+        snapPoints={['55%', '88%']}
+        enablePanDownToClose
+        onClose={closeTrace}
+        backgroundStyle={styles.sheetBg}
+        handleIndicatorStyle={styles.sheetHandle}
+      >
+        <BottomSheetScrollView contentContainerStyle={styles.sheetContent}>
+          {activeTrace && (
+            <>
+              <TraceCard
+                id={activeTrace.id}
+                segments={parseClue(activeTrace.clue)}
+                difficulty={activeTrace.difficulty as any}
+                attemptsLeft={attemptsLeft}
+                maxAttempts={activeTrace.max_attempts}
+                stage={stage}
+                distanceMeters={Math.round(activeTrace.distance_meters)}
+                onSubmit={handleSubmit}
+              />
+              <Text style={styles.solveCount}>
+                {activeTrace.solve_count === 0
+                  ? 'No one has found this yet.'
+                  : `${activeTrace.solve_count} tracer${activeTrace.solve_count === 1 ? '' : 's'} found this.`}
+              </Text>
+            </>
+          )}
+        </BottomSheetScrollView>
+      </BottomSheet>
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: COLORS.navy,
   },
-  scroll: {
-    paddingBottom: 48,
+  centerFill: {
+    flex: 1,
+    backgroundColor: COLORS.navy,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-
-  // Header
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginHorizontal: 20,
-    marginTop: 8,
-    marginBottom: 16,
+  errorText: {
+    fontFamily: FONTS.mono,
+    fontSize: 13,
+    color: COLORS.classified,
+    textAlign: 'center',
+    paddingHorizontal: 32,
+    marginTop: 16,
   },
-  headerLabel: {
+  loadingText: {
     fontFamily: FONTS.mono,
     fontSize: 10,
     color: COLORS.concrete,
-    letterSpacing: 3,
-    textTransform: 'uppercase',
-  },
-  headerTitle: {
-    fontFamily: FONTS.uiExtraBold,
-    fontSize: 26,
-    color: COLORS.ghost,
-    marginTop: 2,
-  },
-  headerRight: {
-    alignItems: 'flex-end',
-  },
-  streakLabel: {
-    fontFamily: FONTS.mono,
-    fontSize: 9,
-    color: COLORS.concrete,
     letterSpacing: 2,
+    marginTop: 16,
   },
-  streakCount: {
-    fontFamily: FONTS.uiExtraBold,
-    fontSize: 24,
-    color: COLORS.amber,
-  },
-
-  // Tabs
-  tabs: {
-    flexDirection: 'row',
-    marginHorizontal: 20,
-    marginBottom: 20,
-    gap: 24,
-  },
-  tab: {
-    paddingBottom: 6,
-    position: 'relative',
-  },
-  tabText: {
-    fontFamily: FONTS.monoBold,
-    fontSize: 11,
-    color: COLORS.concrete,
-    letterSpacing: 1.5,
-  },
-  tabTextActive: {
-    color: COLORS.amber,
-  },
-  tabUnderline: {
+  hud: {
     position: 'absolute',
-    bottom: 0,
+    top: 0,
     left: 0,
     right: 0,
-    height: 1,
-    backgroundColor: COLORS.amber,
   },
-
-  // Section labels
-  sectionHeader: {
+  hudRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginHorizontal: 20,
-    marginBottom: 12,
-    marginTop: 24,
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginHorizontal: 16,
+    marginTop: 8,
   },
-  sectionLabel: {
-    fontFamily: FONTS.mono,
-    fontSize: 9,
-    color: COLORS.concrete,
-    letterSpacing: 3,
-    textTransform: 'uppercase',
-  },
-  activeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.classified,
-  },
-
-  // Stage stepper (demo)
-  stageStepper: {
-    flexDirection: 'row',
-    marginHorizontal: 20,
-    marginTop: 16,
-    gap: 8,
-  },
-  stageBtn: {
-    flex: 1,
-    paddingVertical: 6,
+  hudLeft: {
+    backgroundColor: 'rgba(10,10,10,0.88)',
+    borderRadius: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderWidth: 1,
     borderColor: COLORS.navyLight,
-    borderRadius: 2,
-    alignItems: 'center',
   },
-  stageBtnActive: {
-    borderColor: COLORS.amber,
-    backgroundColor: COLORS.navyMid,
-  },
-  stageBtnText: {
+  hudLabel: {
     fontFamily: FONTS.mono,
     fontSize: 8,
     color: COLORS.concrete,
-    letterSpacing: 1,
+    letterSpacing: 2,
   },
-  stageBtnTextActive: {
+  hudCount: {
+    fontFamily: FONTS.uiExtraBold,
+    fontSize: 26,
     color: COLORS.amber,
+    marginTop: 1,
   },
-  stageHint: {
-    fontFamily: FONTS.mono,
-    fontSize: 9,
-    color: COLORS.concrete,
-    opacity: 0.4,
-    textAlign: 'center',
-    marginTop: 6,
-    marginBottom: 4,
-  },
-
-  // Pins row
-  pinsRow: {
-    flexDirection: 'row',
+  recenterBtn: {
+    backgroundColor: 'rgba(10,10,10,0.88)',
+    borderRadius: 4,
+    width: 42,
+    height: 42,
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 24,
-    marginTop: 24,
-    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: COLORS.navyLight,
   },
-  pinsHint: {
-    fontFamily: FONTS.mono,
-    fontSize: 9,
-    color: COLORS.concrete,
-    opacity: 0.4,
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-
-  // Nearby list
-  nearbyCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginHorizontal: 20,
-    marginBottom: 8,
-    backgroundColor: COLORS.navyMid,
-    borderRadius: 4,
-    padding: 14,
-    borderLeftWidth: 2,
-    borderLeftColor: COLORS.navyLight,
-  },
-  nearbyLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  nearbyDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  nearbyLabel: {
-    fontFamily: FONTS.monoBold,
-    fontSize: 12,
+  recenterIcon: {
+    fontSize: 20,
     color: COLORS.ghost,
-    letterSpacing: 1,
   },
-  nearbyDiff: {
-    fontFamily: FONTS.mono,
-    fontSize: 9,
-    color: COLORS.concrete,
-    letterSpacing: 1.5,
-    marginTop: 2,
-  },
-  nearbyRight: {
+  scanningBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  nearbyDistance: {
-    fontFamily: FONTS.monoBold,
-    fontSize: 13,
-    letterSpacing: 1,
-  },
-  nearbyArrow: {
-    fontFamily: FONTS.uiBold,
-    fontSize: 18,
-    color: COLORS.concrete,
-  },
-
-  // Territory
-  territoryCard: {
-    marginHorizontal: 20,
+    backgroundColor: 'rgba(10,10,10,0.88)',
+    alignSelf: 'center',
     marginTop: 8,
-    backgroundColor: COLORS.navyMid,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 4,
-    padding: 20,
     borderWidth: 1,
     borderColor: COLORS.amber,
   },
-  territoryZone: {
-    fontFamily: FONTS.uiExtraBold,
-    fontSize: 22,
-    color: COLORS.ghost,
-    marginBottom: 4,
-  },
-  territoryRankRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginBottom: 16,
-  },
-  territoryRank: {
-    fontFamily: FONTS.uiExtraBold,
-    fontSize: 32,
-    color: COLORS.amber,
-  },
-  territoryRankLabel: {
+  scanningText: {
     fontFamily: FONTS.mono,
-    fontSize: 11,
-    color: COLORS.concrete,
+    fontSize: 9,
+    color: COLORS.amber,
     letterSpacing: 2,
   },
-  territoryBar: {
-    height: 3,
+  sheetBg: {
+    backgroundColor: COLORS.navyMid,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  sheetHandle: {
     backgroundColor: COLORS.navyLight,
-    borderRadius: 2,
-    marginBottom: 8,
+    width: 36,
   },
-  territoryBarFill: {
-    height: 3,
-    backgroundColor: COLORS.amber,
-    borderRadius: 2,
+  sheetContent: {
+    paddingTop: 8,
+    paddingBottom: 48,
   },
-  territoryProgress: {
+  solveCount: {
     fontFamily: FONTS.mono,
     fontSize: 10,
     color: COLORS.concrete,
     letterSpacing: 1,
-  },
-
-  // Photo grid
-  photoGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: 20,
-    gap: 6,
-  },
-  photoCell: {
-    width: '31.5%',
-    aspectRatio: 1,
-  },
-  photoCellInner: {
-    flex: 1,
-    backgroundColor: COLORS.navyMid,
-    borderRadius: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoCellIcon: {
-    fontSize: 24,
-  },
-  photoCellDot: {
-    position: 'absolute',
-    bottom: 6,
-    right: 6,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    textAlign: 'center',
+    marginTop: 12,
+    paddingHorizontal: 20,
   },
 });
