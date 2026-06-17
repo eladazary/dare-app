@@ -19,6 +19,19 @@ import SolveReveal from '@/components/SolveReveal';
 import { useLocation, useNearbyTraces, type NearbyTrace } from '@/hooks/useTraces';
 import { supabase } from '@/lib/supabase';
 
+// ─────────────────────────────────────────────
+// Dev utility — seeds 5 test traces around current location
+// Remove before production
+// ─────────────────────────────────────────────
+async function seedTracesNearMe(lat: number, lng: number) {
+  const { error } = await supabase.rpc('seed_dev_traces', {
+    user_lat: lat,
+    user_lng: lng,
+  });
+  if (error) console.error('Seed error:', error.message);
+  else console.log('✅ 5 test traces seeded near you');
+}
+
 const DARK_MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#0A0A0A' }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#8A8A8A' }] },
@@ -64,6 +77,7 @@ export default function MapScreen() {
   const [attemptsLeft, setAttemptsLeft] = useState(3);
   const [showCamera, setShowCamera] = useState(false);
   const [solveResult, setSolveResult] = useState<{ selfieUri: string; startedAt: number } | null>(null);
+  const [seeding, setSeeding] = useState(false);
   const startedAtRef = useRef<number>(0);
 
   const openTrace = useCallback((trace: NearbyTrace) => {
@@ -222,6 +236,25 @@ export default function MapScreen() {
             <ActivityIndicator color={COLORS.amber} size="small" />
             <Text style={styles.scanningText}>SCANNING AREA...</Text>
           </View>
+        )}
+
+        {/* DEV: seed traces near current location */}
+        {!isLoading && traces.length === 0 && (
+          <TouchableOpacity
+            style={styles.devSeedBtn}
+            disabled={seeding}
+            onPress={async () => {
+              setSeeding(true);
+              await seedTracesNearMe(location.lat, location.lng);
+              await refetch();
+              setSeeding(false);
+            }}
+          >
+            {seeding
+              ? <ActivityIndicator color={COLORS.navy} size="small" />
+              : <Text style={styles.devSeedText}>DEV: Seed traces here</Text>
+            }
+          </TouchableOpacity>
         )}
       </SafeAreaView>
 
@@ -387,6 +420,20 @@ const styles = StyleSheet.create({
   sheetContent: {
     paddingTop: 8,
     paddingBottom: 48,
+  },
+  devSeedBtn: {
+    backgroundColor: COLORS.amber,
+    alignSelf: 'center',
+    marginTop: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 4,
+  },
+  devSeedText: {
+    fontFamily: FONTS.monoBold,
+    fontSize: 11,
+    color: COLORS.navy,
+    letterSpacing: 1,
   },
   solveCount: {
     fontFamily: FONTS.mono,
