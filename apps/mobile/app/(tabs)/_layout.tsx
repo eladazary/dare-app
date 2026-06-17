@@ -51,18 +51,18 @@ export default function TabLayout() {
         tabBarShowLabel: false,
       }}
     >
-      {/* Today */}
+      {/* Map — primary screen */}
       <Tabs.Screen
-        name="index"
+        name="map"
         options={{
-          title: 'Mission',
+          title: 'Hunt',
           tabBarIcon: ({ focused }) => (
-            <TabIcon name="home" focused={focused} />
+            <TabIcon name="map" focused={focused} />
           ),
         }}
       />
 
-      {/* City */}
+      {/* Field Intel feed */}
       <Tabs.Screen
         name="city"
         options={{
@@ -73,29 +73,18 @@ export default function TabLayout() {
         }}
       />
 
-      {/* Map */}
-      <Tabs.Screen
-        name="map"
-        options={{
-          title: 'Ops',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon name="map" focused={focused} />
-          ),
-        }}
-      />
-
-      {/* Events */}
+      {/* Arena — social mechanics */}
       <Tabs.Screen
         name="events"
         options={{
-          title: 'Events',
+          title: 'Arena',
           tabBarIcon: ({ focused }) => (
             <TabIcon name="trophy" focused={focused} />
           ),
         }}
       />
 
-      {/* Me */}
+      {/* Agent profile */}
       <Tabs.Screen
         name="profile"
         options={{
@@ -103,6 +92,14 @@ export default function TabLayout() {
           tabBarIcon: ({ focused }) => (
             <TabIcon name="person" focused={focused} />
           ),
+        }}
+      />
+
+      {/* Index — hidden from tab bar, kept for routing */}
+      <Tabs.Screen
+        name="index"
+        options={{
+          href: null,
         }}
       />
     </Tabs>

@@ -2,11 +2,11 @@
 
 ## What This Is
 
-**Dare** is a mobile city exploration app where a daily photo challenge drops at a random time and users have 2 hours to go outside and complete it. Think BeReal meets Pokemon Go meets a competitive game.
+**Tracer** is a city exploration app built around a single core loop: walk around, get notified that a Cipher is nearby, decode a cryptic clue about a real place, walk to it, take a selfie. Think Amazing Race meets Pokemon Go — the city is the game board.
 
-- **App name:** Dare
-- **Domain:** thedare.app
-- **Bundle ID:** app.thedare.dare
+- **App name:** Tracer
+- **Domain:** runtracer.app
+- **Bundle ID:** app.runtracer.tracer
 - **Working directory:** `/Users/eladazary/workspaces/gone/`
 - **Mobile app:** `/Users/eladazary/workspaces/gone/apps/mobile/`
 
@@ -29,24 +29,24 @@ Danger:      #FF2D55  (red)
 Classified:  #7B5EA7  (purple, AI verdict)
 ```
 
-**Fonts:** SpaceGrotesk_400Regular, SpaceGrotesk_700Bold (UI) + PlayfairDisplay_700Bold, PlayfairDisplay_400Regular_Italic (challenge text)
+**Fonts:** SpaceGrotesk_400Regular, SpaceGrotesk_700Bold (UI) + PlayfairDisplay_700Bold, PlayfairDisplay_400Regular_Italic (clue text)
 
 Note: `SpaceGrotesk_800ExtraBold` does NOT exist in the package — always use `SpaceGrotesk_700Bold`.
 
 **Language (mission briefing tone):**
-- Challenge → Dare
-- Submit photo → Submit proof
+- Location clue challenge → Cipher
+- Submit selfie → Submit proof
 - Streak → Run
-- City Feed → City Intel
+- Feed → Field Intel
 - Gallery → Archive
 - Expedition → Field Op
-- Duel → Head to Head
-- Tournament → City War
-- Legendary → Critical Dare
-- Chain Unlock → Classified
+- Challenge a friend → Taunt
 - Crew → Squad
 - Badges → Commendations
+- Arena zone → Territory
 - Levels: Recruit → Agent → Operative → Field Agent → Handler → Legend
+
+**Tagline:** "The world leaves traces. Find yours."
 
 ---
 
@@ -55,11 +55,11 @@ Note: `SpaceGrotesk_800ExtraBold` does NOT exist in the package — always use `
 | Layer | Technology |
 |-------|-----------|
 | Mobile | React Native + Expo SDK 51, expo-router |
-| Database | Supabase (Postgres + Auth + Realtime + Edge Functions) |
+| Database | Supabase (Postgres + PostGIS + Auth + Realtime + Edge Functions) |
 | Photo storage | Cloudflare R2 (zero egress) |
-| Vision AI | AWS Rekognition (replaces Google Vision — cheaper) |
+| Vision AI | AWS Rekognition (selfie + location verification) |
 | AI Verdicts | AWS Bedrock Claude Haiku |
-| Leaderboard | AWS DynamoDB (on-demand, replaces Upstash Redis) |
+| Leaderboard | AWS DynamoDB (on-demand) |
 | Verification | AWS Lambda (Node.js 20) |
 | State | Zustand |
 | Data fetching | React Query |
@@ -69,54 +69,96 @@ Note: `SpaceGrotesk_800ExtraBold` does NOT exist in the package — always use `
 
 ---
 
-## Core Game Mechanics
+## Core Game Loop
 
-1. **Daily Dare** — drops at a random time, 2-hour window, miss it = lose streak
-2. **Chain Unlock** — complete the dare → secret bonus dare unlocks
-3. **Relay** — your photo's detail becomes the next person's prompt (weekly)
-4. **Duel (Head to Head)** — blind matchmaking, city votes on winner (weekly)
-5. **Expedition (Field Op)** — plant a flag somewhere, others find it
-6. **Parallel Lives** — matched with a user in another city doing the same dare
-7. **Takeover** — last week's #1 sets this week's dare
-8. **Critical Dare (Legendary)** — once a month, 30 minutes, unannounced
-9. **City War (Tournament)** — weekend tournament, city vs city
-10. **Squad** — your crew earns passive XP from each other's completions
-11. **Referral system** — invite agents, earn city founder status
+**The map is the most important screen.** Everything starts there.
 
-**Challenge types (template library):**
-- Visual: red door, locked up, cat in window, faces everywhere, lucky seven, falling digit
-- Human: accidental twins, stranger's choice
-- Nature: nature wins, puddle world
-- Light: shadow animal, golden hour (condition: golden hour), wet city (condition: rain), empty stage (condition: after 9pm)
-- Concept: the word (broken, lost)
-- Creative: spell it
+1. User walks around the city
+2. Gets a push notification: "A Cipher appeared 200m from you."
+3. Opens app → sees a glowing pin on the map
+4. Taps pin → reads the clue (a riddle about a specific real place nearby)
+5. Figures out which place the clue refers to
+6. Walks there
+7. Takes a selfie at that location
+8. GPS verifies they're within the solve radius → success
+
+**Difficulty determines search radius:**
+| Difficulty | Notify radius | Solve radius | Attempts |
+|---|---|---|---|
+| Easy | 100m | 30m | 3 |
+| Medium | 300m | 50m | 3 |
+| Hard | 600m | 100m | 3 |
+| Legendary | 1000m | 200m | 3 |
+
+If a user runs out of attempts they can purchase 3 more to continue their streak.
+
+---
+
+## Social Mechanics (the retention layer)
+
+All of these are built on top of the core loop — the map + Cipher is the game, these are what make it addictive.
+
+| Mechanic | How it works | Why it works |
+|---|---|---|
+| **Taunt** | After solving, one tap sends the same Cipher to a friend with your time as the benchmark. 48h to beat it. | Competitive ego, async |
+| **Live Race** | Both players start the same Cipher simultaneously. Real-time dots on map. First selfie wins. | Shared story |
+| **Rescue** | Friend is on last attempt → you get notified → send them the hint → if THEY succeed, YOUR streak continues | Streak survival + acquisition |
+| **Ghost Trail** | After solving, a blurred pin appears on friends' maps for 24h. They can tap it to receive the same Cipher. | Passive FOMO, map life |
+| **Territory** | Most Ciphers solved in a zone = you own it. Squads defend collectively. Taking someone's territory notifies them. | Loss aversion, squad loyalty |
+| **Bounty Board** | Stake XP on an unsolved Cipher. First solver claims the pot. | City-wide FOMO |
+| **Synchronized Unlock** | Two friends both near the same area → special co-op Cipher unlocks | Serendipity |
+
+**Key rescue rule:** streak credit only fires if the rescued person actually succeeds. This makes the rescue a real social contract — you're invested in their success.
+
+---
+
+## Streak Mechanics
+
+Streak = at least 1 qualifying action every 3 days (not daily — location-based app needs flexibility).
+
+Qualifying actions:
+- Solve a Cipher yourself
+- Rescue a friend who then successfully solves (streak credited on their success, not your send)
+
+---
+
+## Cipher Content
+
+**Phase 1:** Hundreds of hand-curated clues about real places (landmarks, hidden spots, street details) in launch cities.
+
+**Phase 2:** AI-generated from POI/OpenStreetMap data — scales to any city automatically.
+
+Clue format: a riddle that is solvable but not trivial. The difficulty is in the radius, not the obscurity of the clue. Easy clues + small radius = you need to be precise. Hard clues + large radius = you need to think harder to narrow down the area.
 
 ---
 
 ## Project Structure
 
 ```
-gone/
+dare-app/
 ├── apps/mobile/              ← Expo React Native app
 │   ├── app/
 │   │   ├── (tabs)/
-│   │   │   ├── index.tsx     ← Mission screen (Today)
-│   │   │   ├── city.tsx      ← City Intel feed
-│   │   │   ├── map.tsx       ← Field Ops / Expedition
-│   │   │   ├── events.tsx    ← Arena (duels, tournaments)
-│   │   │   └── profile.tsx   ← Agent profile
+│   │   │   ├── map.tsx       ← THE main screen — Cipher map
+│   │   │   ├── index.tsx     ← Field Intel feed (solved Ciphers, activity)
+│   │   │   ├── events.tsx    ← Arena (live races, bounty board, territory)
+│   │   │   └── profile.tsx   ← Agent profile + streak + commendations
 │   │   ├── onboarding/
-│   │   │   ├── index.tsx     ← Welcome / magic link
-│   │   │   ├── city.tsx      ← Pick city
+│   │   │   ├── index.tsx     ← Welcome / magic link ("The world dares you.")
+│   │   │   ├── city.tsx      ← Choose arena (global / public / private code)
 │   │   │   └── permissions.tsx
 │   │   └── _layout.tsx       ← Root layout + auth gate
 │   ├── components/
-│   │   ├── PolaroidReveal.tsx ← THE signature animation
+│   │   ├── CipherPin.tsx     ← Map pin with pulse animation
+│   │   ├── CipherCard.tsx    ← Clue reveal card
+│   │   ├── SelfieCapture.tsx ← Camera + GPS submit flow
+│   │   ├── GhostPin.tsx      ← Blurred friend trail on map
+│   │   ├── TerritoryOverlay.tsx ← Zone ownership on map
+│   │   ├── PolaroidReveal.tsx ← Signature solve animation
 │   │   ├── FeedItem.tsx
 │   │   ├── Timer.tsx
 │   │   ├── LevelBar.tsx
 │   │   ├── StreakCounter.tsx
-│   │   ├── VerificationStatus.tsx
 │   │   └── BadgeGrid.tsx
 │   ├── constants/
 │   │   ├── colors.ts         ← Design system colors
@@ -125,47 +167,41 @@ gone/
 │   │   └── badges.ts         ← Badge definitions
 │   ├── stores/               ← Zustand state
 │   │   ├── userStore.ts
-│   │   ├── challengeStore.ts
+│   │   ├── cipherStore.ts    ← Active cipher, attempts, nearby pins
 │   │   ├── feedStore.ts
-│   │   ├── tournamentStore.ts
-│   │   └── socialStore.ts
+│   │   ├── socialStore.ts    ← Challenges, rescues, ghost trails
+│   │   └── territoryStore.ts
 │   ├── hooks/
-│   │   ├── useChallenge.ts
+│   │   ├── useCiphers.ts     ← Nearby cipher fetching (PostGIS proximity)
 │   │   ├── useStreak.ts
 │   │   ├── useLeaderboard.ts
 │   │   └── useRealtimeFeed.ts
 │   └── lib/
 │       ├── supabase.ts       ← Supabase client
-│       └── api.ts            ← Challenge fetching
+│       └── api.ts            ← Cipher fetching + GPS submission
 │
 ├── services/verification/    ← AWS Lambda
 │   ├── handler.ts            ← Main pipeline
-│   ├── vision.ts             ← AWS Rekognition
-│   ├── verdict.ts            ← AWS Bedrock Claude Haiku
-│   ├── leaderboard.ts        ← DynamoDB
-│   ├── gps.ts                ← Haversine validation
-│   ├── exif.ts               ← EXIF timestamp check
+│   ├── vision.ts             ← AWS Rekognition (selfie verification)
+│   ├── gps.ts                ← Haversine: is user within solve_radius?
+│   ├── exif.ts               ← EXIF timestamp check (no old photos)
 │   └── cheat.ts              ← pHash deduplication
 │
 ├── supabase/
 │   ├── migrations/
-│   │   ├── 001_initial.sql         ← Core schema
-│   │   ├── 002_functions.sql       ← RPCs + triggers
-│   │   ├── 003_realtime.sql        ← Realtime publication
-│   │   ├── 004_amazing_race.sql    ← ⚠️ DO NOT APPLY (multi-leg, shelved)
-│   │   ├── 005_social_mechanics.sql ← Crews, referrals, tournaments, duels, expeditions, relay, parallel lives, legendary
-│   │   └── 006_challenge_templates.sql ← Template library + challenge categories
+│   │   ├── 001_initial.sql            ← Core schema
+│   │   ├── 002_functions.sql          ← RPCs + triggers
+│   │   ├── 003_realtime.sql           ← Realtime publication
+│   │   ├── 004_amazing_race.sql       ← ⚠️ DO NOT APPLY (shelved)
+│   │   ├── 005_social_mechanics.sql   ← Crews, referrals, squads
+│   │   ├── 006_challenge_templates.sql ← Legacy action-challenge templates (deprioritised)
+│   │   └── 007_ciphers.sql            ← ✅ CORE: Cipher mechanic + all social tables
 │   ├── functions/
-│   │   ├── challenge-generator/    ← Daily dare generation (Anthropic API)
-│   │   ├── midnight-ceremony/      ← Rankings + rewards at midnight
-│   │   ├── send-notifications/     ← Expo push notifications
-│   │   ├── get-upload-url/         ← R2 presigned upload URLs
-│   │   ├── match-parallel-lives/   ← Cross-city matching
-│   │   ├── handle-referral/        ← Referral rewards
-│   │   ├── manage-relay/           ← Relay chain logic
-│   │   ├── manage-tournament/      ← Tournament lifecycle
-│   │   └── crew-xp/               ← Passive squad XP
-│   └── seed.sql                   ← Tel Aviv + London test data (7 days each)
+│   │   ├── send-notifications/        ← Expo push: "A Cipher appeared near you"
+│   │   ├── get-upload-url/            ← R2 presigned selfie upload URLs
+│   │   ├── cipher-proximity/          ← Checks for nearby ciphers on user movement
+│   │   └── crew-xp/                   ← Passive squad XP
+│   └── seed.sql                       ← Tel Aviv + London test data
 │
 ├── infrastructure/aws/
 │   ├── lambda.tf
@@ -187,10 +223,9 @@ gone/
 ```bash
 cd /Users/eladazary/workspaces/gone/apps/mobile
 
-# Install deps (already done)
 npm install
 
-# Start Expo (use --go to run in Expo Go, not dev build)
+# Start Expo
 npx expo start --go
 
 # Press 'i' for iOS Simulator or scan QR with Expo Go on iPhone
@@ -211,14 +246,13 @@ npx expo start --go
 # apps/mobile/.env.local
 EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-EXPO_PUBLIC_CLOUDFLARE_WORKER_URL=   # leave empty for now
 
 # services/verification/.env
 SUPABASE_URL=
 SUPABASE_SERVICE_KEY=
 AWS_REGION=us-east-1
-ANTHROPIC_API_KEY=           # for AI verdicts via Bedrock alternative
-DYNAMODB_TABLE=gone-leaderboard
+ANTHROPIC_API_KEY=
+DYNAMODB_TABLE=dare-leaderboard
 R2_ACCOUNT_ID=
 R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
@@ -236,53 +270,36 @@ R2_PUBLIC_URL=https://photos.thedare.app
    - 002_functions.sql
    - 003_realtime.sql
    - 005_social_mechanics.sql
-   - 006_challenge_templates.sql
-   - seed.sql
-3. ⚠️ Skip 004_amazing_race.sql (multi-leg system, shelved for later)
-4. Enable Realtime on: submissions, votes, users, tournaments, duels, relay_links, legendary_events
+   - 007_ciphers.sql
+3. ⚠️ Skip 004_amazing_race.sql and 006_challenge_templates.sql for now
+4. Enable Realtime on: cipher_challenges, cipher_rescues, territories, bounties, ghost_trails
 5. Set secrets via Supabase dashboard or CLI
 
 ---
 
 ## What's Left to Build (Phase 1)
 
+- [ ] Seed hundreds of hand-curated Ciphers for Tel Aviv + London
+- [ ] Map screen with Cipher pins, ghost trails, territory overlays
+- [ ] Cipher card UI (clue reveal, attempt counter, selfie submit)
+- [ ] GPS + selfie verification pipeline (Lambda)
+- [ ] Push notification: "A Cipher appeared Xm from you"
+- [ ] Taunt flow (challenge a friend after solving)
+- [ ] Rescue flow (last-attempt notification + hint send)
+- [ ] Streak display + 3-day cadence logic
 - [ ] Set up Supabase project + run migrations
 - [ ] Set up Cloudflare R2 bucket
-- [ ] Set up AWS Lambda (terraform apply in infrastructure/aws/)
-- [ ] Deploy Supabase Edge Functions
-- [ ] Wire up real auth flow (magic link works in code, needs real Supabase)
-- [ ] Test camera + GPS flow end to end on real device
-- [ ] EAS build configuration for TestFlight submission
-- [ ] Push notification registration flow
+- [ ] Set up AWS Lambda
+- [ ] Wire up real auth (magic link works, needs real Supabase)
+- [ ] EAS build + TestFlight submission
 
 ## What's Shelved for Phase 2
 
-- Multi-leg Amazing Race challenges (migration 004 exists, don't apply yet)
-- Gone+/Dare+ payment flow (UI card exists, no Stripe)
-- Friend league tables
+- Live race (needs real-time location sharing)
+- Territory UI (map overlay)
+- Bounty board
+- Synchronized unlock
+- AI cipher generation from POI data
 - Android build (iOS first)
-- Condition-lock challenges (schema ready, generator skips)
-
----
-
-## Key Decisions Made
-
-- **Name:** Dare | **Domain:** thedare.app
-- **Primary color:** #B8860B (DarkGoldenrod — user iterated through yellow/orange, settled on dark gold)
-- **Theme:** Mission Briefing — black + gold, military/spy aesthetic
-- **1 dare per day** (not multiple) — scarcity is the product
-- **AWS Rekognition** over Google Vision (cheaper, AWS-native)
-- **DynamoDB** over Upstash Redis for leaderboard
-- **Cloudflare R2** kept over S3 (zero egress fees, photo-heavy app)
-- **Supabase free tier** kept (covers DB + Auth + Realtime + Edge Functions at $0)
-- **Challenge drop time is RANDOM** (not 7am fixed) — BeReal mechanic
-- **Challenges are templates** (not freeform AI generation) for consistency and verifiability
-
----
-
-## Cities Seeded
-
-- **Tel Aviv** — ID: `a1000000-0000-0000-0000-000000000001`
-- **London** — ID: `a1000000-0000-0000-0000-000000000002`
-
-7 days of dares seeded for each (Jun 10–16, 2026) covering all 7 archetypes.
+- Payment flow for extra attempts (Stripe)
+- Gone+/Dare+ subscription

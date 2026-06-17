@@ -7,10 +7,12 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { COLORS } from '@/constants/colors';
 
 export default function OnboardingIndex() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -26,9 +28,9 @@ export default function OnboardingIndex() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>DARE</Text>
-      <Text style={styles.subtitle}>The city dares you. Every day.</Text>
-      <Text style={styles.emoji}>🏙️</Text>
+      <Text style={styles.title}>TRACER</Text>
+      <Text style={styles.subtitle}>The world leaves traces. Find yours.</Text>
+      <Text style={styles.emoji}>🌍</Text>
 
       {sent ? (
         <Text style={styles.successText}>Check your messages. Your access link is waiting. ✓</Text>
@@ -62,6 +64,10 @@ export default function OnboardingIndex() {
 
       <TouchableOpacity>
         <Text style={styles.signInText}>Already an agent? Sign in</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity onPress={() => router.replace('/(tabs)/map')}>
+        <Text style={styles.previewText}>Preview the app →</Text>
       </TouchableOpacity>
     </View>
   );
@@ -124,5 +130,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     marginTop: 24,
+  },
+  previewText: {
+    color: COLORS.amber,
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 16,
+    opacity: 0.5,
   },
 });

@@ -10,194 +10,284 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '@/constants/colors';
 import { FONTS } from '@/constants/typography';
+import CipherCard, { parseClue, type CipherStage } from '@/components/CipherCard';
+import CipherPin from '@/components/CipherPin';
 
-const MOCK_EXPEDITIONS = [
-  {
-    id: '1',
-    clue: 'Someone left something at the place where the city starts its day. Look for what doesn\'t belong.',
-    plantedBy: '@sunrise_walker',
-    points: 200,
-    expiresInHours: 4,
-  },
-  {
-    id: '2',
-    clue: 'A door that exists on no map. Ask someone old enough to remember.',
-    plantedBy: '@old_town_ghost',
-    points: 350,
-    expiresInHours: 11,
-  },
-  {
-    id: '3',
-    clue: 'Find what the new city was built on top of.',
-    plantedBy: '@memorykeeper',
-    points: 500,
-    expiresInHours: 2,
-  },
+// ─────────────────────────────────────────────
+// Mock data
+// ─────────────────────────────────────────────
+
+const MOCK_ACTIVE_CIPHER = {
+  id: 'a3f7c2e1',
+  clue: [
+    'I have stood at this corner since ',
+    '[R:approaching]1887[/R]',
+    ', watching every sunrise without ever moving. The ',
+    '[R:close]oldest thing here[/R]',
+    ' that is not a building. I have a name nobody uses anymore.',
+  ].join(''),
+  difficulty: 'hard' as const,
+  attemptsLeft: 2,
+  maxAttempts: 3,
+  distanceMeters: 94,
+};
+
+const MOCK_NEARBY = [
+  { id: 'b1d4e9f2', difficulty: 'easy' as const, distanceMeters: 180, label: 'The market entrance' },
+  { id: 'c8a2f0e5', difficulty: 'medium' as const, distanceMeters: 340, label: 'Under the bridge' },
+  { id: 'd5c1b7a3', difficulty: 'legendary' as const, distanceMeters: 820, label: '???' },
 ];
 
 const MOCK_TERRITORY = {
-  locationCount: 23,
-  dayCount: 14,
-  photos: [
-    { id: '1', rank: 'top3' },
-    { id: '2', rank: 'top10' },
-    { id: '3', rank: 'none' },
-    { id: '4', rank: 'top3' },
-    { id: '5', rank: 'top10' },
-    { id: '6', rank: 'none' },
-    { id: '7', rank: 'top10' },
-    { id: '8', rank: 'none' },
-    { id: '9', rank: 'top3' },
-  ],
+  zoneName: 'Florentin',
+  solveCount: 7,
+  totalInZone: 12,
+  rank: 1,
 };
 
-function rankDotColor(rank: string): string {
-  if (rank === 'top3') return COLORS.amber;
-  if (rank === 'top10') return COLORS.green;
-  return COLORS.concrete;
-}
+// ─────────────────────────────────────────────
+// Difficulty colour helper
+// ─────────────────────────────────────────────
+
+const DIFF_COLOR: Record<string, string> = {
+  easy: COLORS.green,
+  medium: COLORS.amber,
+  hard: COLORS.classified,
+  legendary: COLORS.purple,
+};
+
+// ─────────────────────────────────────────────
+// Screen
+// ─────────────────────────────────────────────
 
 export default function MapScreen() {
   const [activeTab, setActiveTab] = useState<'hunt' | 'territory'>('hunt');
+  // Cycle through stages for demo
+  const [stage, setStage] = useState<CipherStage>('approaching');
+
+  const segments = parseClue(MOCK_ACTIVE_CIPHER.clue);
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+
+        {/* ── Header ── */}
         <View style={styles.header}>
-          <Text style={styles.headerLabel}>OPS</Text>
-          <Text style={styles.headerTitle}>Field Ops</Text>
+          <View>
+            <Text style={styles.headerLabel}>FIELD OPS</Text>
+            <Text style={styles.headerTitle}>Hunt</Text>
+          </View>
+          <View style={styles.headerRight}>
+            <Text style={styles.streakLabel}>RUN</Text>
+            <Text style={styles.streakCount}>14</Text>
+          </View>
         </View>
 
-        {/* Toggle Tabs */}
+        {/* ── Tabs ── */}
         <View style={styles.tabs}>
-          <TouchableOpacity
-            style={styles.tab}
-            onPress={() => setActiveTab('hunt')}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.tabText, activeTab === 'hunt' && styles.tabTextActive]}>
-              HUNT
-            </Text>
-            {activeTab === 'hunt' && <View style={styles.tabUnderline} />}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.tab}
-            onPress={() => setActiveTab('territory')}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.tabText, activeTab === 'territory' && styles.tabTextActive]}>
-              MY TERRITORY
-            </Text>
-            {activeTab === 'territory' && <View style={styles.tabUnderline} />}
-          </TouchableOpacity>
+          {(['hunt', 'territory'] as const).map((t) => (
+            <TouchableOpacity
+              key={t}
+              style={styles.tab}
+              onPress={() => setActiveTab(t)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabText, activeTab === t && styles.tabTextActive]}>
+                {t === 'hunt' ? 'CIPHER HUNT' : 'MY TERRITORY'}
+              </Text>
+              {activeTab === t && <View style={styles.tabUnderline} />}
+            </TouchableOpacity>
+          ))}
         </View>
 
-        {/* Hunt Tab */}
+        {/* ════════════════════════
+            HUNT TAB
+        ════════════════════════ */}
         {activeTab === 'hunt' && (
           <View>
-            {MOCK_EXPEDITIONS.map((exp) => (
-              <View key={exp.id} style={styles.expeditionCard}>
-                {/* Top row */}
-                <View style={styles.cardTopRow}>
-                  <Text style={styles.expeditionLabel}>🚩 FIELD OP</Text>
-                  <Text style={styles.expiresText}>Expires in {exp.expiresInHours}h</Text>
-                </View>
 
-                {/* Clue photo placeholder */}
-                <View style={styles.cluePhoto}>
-                  <Text style={styles.cluePhotoEmoji}>📍</Text>
-                </View>
+            {/* ── Active cipher ── */}
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionLabel}>ACTIVE CIPHER</Text>
+              <View style={styles.activeDot} />
+            </View>
 
-                {/* Clue text */}
-                <Text style={styles.clueText} numberOfLines={2}>
-                  {exp.clue}
-                </Text>
+            <CipherCard
+              id={MOCK_ACTIVE_CIPHER.id}
+              segments={segments}
+              difficulty={MOCK_ACTIVE_CIPHER.difficulty}
+              attemptsLeft={MOCK_ACTIVE_CIPHER.attemptsLeft}
+              maxAttempts={MOCK_ACTIVE_CIPHER.maxAttempts}
+              stage={stage}
+              distanceMeters={MOCK_ACTIVE_CIPHER.distanceMeters}
+              onSubmit={() => {}}
+            />
 
-                {/* Bottom row */}
-                <View style={styles.cardBottomRow}>
-                  <Text style={styles.plantedBy}>Op by {exp.plantedBy}</Text>
-                  <Text style={styles.pointsBadge}>🏆 {exp.points} pts</Text>
-                </View>
-
-                {/* CTA button */}
-                <TouchableOpacity style={styles.foundButton} activeOpacity={0.85}>
-                  <Text style={styles.foundButtonText}>Mark as found →</Text>
+            {/* Stage stepper — demo only */}
+            <View style={styles.stageStepper}>
+              {(['locked', 'approaching', 'close', 'solved'] as CipherStage[]).map((s) => (
+                <TouchableOpacity
+                  key={s}
+                  style={[styles.stageBtn, stage === s && styles.stageBtnActive]}
+                  onPress={() => setStage(s)}
+                >
+                  <Text style={[styles.stageBtnText, stage === s && styles.stageBtnTextActive]}>
+                    {s.toUpperCase()}
+                  </Text>
                 </TouchableOpacity>
-              </View>
+              ))}
+            </View>
+            <Text style={styles.stageHint}>↑ demo: tap to simulate proximity</Text>
+
+            {/* ── Nearby pins visual ── */}
+            <View style={styles.pinsRow}>
+              <CipherPin state="active" distanceMeters={94} />
+              <CipherPin state="undiscovered" distanceMeters={180} />
+              <CipherPin state="undiscovered" distanceMeters={340} />
+              <CipherPin state="ghost" distanceMeters={210} />
+              <CipherPin state="solved" />
+            </View>
+            <Text style={styles.pinsHint}>5 ciphers in range · 1 ghost trail nearby</Text>
+
+            {/* ── Nearby list ── */}
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionLabel}>NEARBY</Text>
+            </View>
+
+            {MOCK_NEARBY.map((c) => (
+              <TouchableOpacity key={c.id} style={styles.nearbyCard} activeOpacity={0.8}>
+                <View style={styles.nearbyLeft}>
+                  <View style={[styles.nearbyDot, { backgroundColor: DIFF_COLOR[c.difficulty] }]} />
+                  <View>
+                    <Text style={styles.nearbyLabel}>
+                      {c.difficulty === 'legendary' ? '???' : `CIPHER #${c.id.slice(-4).toUpperCase()}`}
+                    </Text>
+                    <Text style={styles.nearbyDiff}>
+                      {c.difficulty.toUpperCase()}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.nearbyRight}>
+                  <Text style={[styles.nearbyDistance, { color: DIFF_COLOR[c.difficulty] }]}>
+                    {c.distanceMeters}M
+                  </Text>
+                  <Text style={styles.nearbyArrow}>›</Text>
+                </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}
 
-        {/* My Territory Tab */}
+        {/* ════════════════════════
+            TERRITORY TAB
+        ════════════════════════ */}
         {activeTab === 'territory' && (
           <View>
-            {/* Territory stats header */}
-            <View style={styles.territoryHeader}>
-              <Text style={styles.locationCount}>
-                {MOCK_TERRITORY.locationCount} locations dared
+            <View style={styles.territoryCard}>
+              <Text style={styles.territoryZone}>{MOCK_TERRITORY.zoneName}</Text>
+              <View style={styles.territoryRankRow}>
+                <Text style={styles.territoryRank}>#{MOCK_TERRITORY.rank}</Text>
+                <Text style={styles.territoryRankLabel}> IN ZONE</Text>
+              </View>
+              <View style={styles.territoryBar}>
+                <View
+                  style={[
+                    styles.territoryBarFill,
+                    { width: `${(MOCK_TERRITORY.solveCount / MOCK_TERRITORY.totalInZone) * 100}%` },
+                  ]}
+                />
+              </View>
+              <Text style={styles.territoryProgress}>
+                {MOCK_TERRITORY.solveCount} / {MOCK_TERRITORY.totalInZone} ciphers solved
               </Text>
-              <Text style={styles.dayCount}>across {MOCK_TERRITORY.dayCount} missions</Text>
             </View>
 
-            {/* Photo grid */}
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionLabel}>ZONE ACTIVITY</Text>
+            </View>
+
+            {/* Placeholder grid */}
             <View style={styles.photoGrid}>
-              {MOCK_TERRITORY.photos.map((photo) => (
-                <View key={photo.id} style={styles.photoCell}>
-                  <View style={styles.photoInner}>
-                    <Text style={styles.photoEmoji}>📸</Text>
+              {Array.from({ length: 9 }).map((_, i) => (
+                <View key={i} style={styles.photoCell}>
+                  <View style={styles.photoCellInner}>
+                    <Text style={styles.photoCellIcon}>📍</Text>
                     <View
                       style={[
-                        styles.rankDot,
-                        { backgroundColor: rankDotColor(photo.rank) },
+                        styles.photoCellDot,
+                        {
+                          backgroundColor:
+                            i % 3 === 0 ? COLORS.amber : i % 3 === 1 ? COLORS.green : COLORS.concrete,
+                        },
                       ]}
                     />
                   </View>
                 </View>
               ))}
             </View>
-
-            {/* Plant flag CTA */}
-            <TouchableOpacity style={styles.plantButton} activeOpacity={0.85}>
-              <Text style={styles.plantButtonText}>Plant a field op →</Text>
-            </TouchableOpacity>
           </View>
         )}
+
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+// ─────────────────────────────────────────────
+// Styles
+// ─────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: COLORS.navy,
   },
-  scrollContent: {
-    paddingBottom: 40,
+  scroll: {
+    paddingBottom: 48,
   },
+
+  // Header
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
     marginHorizontal: 20,
     marginTop: 8,
     marginBottom: 16,
   },
   headerLabel: {
-    fontFamily: FONTS.ui,
-    fontSize: 11,
+    fontFamily: FONTS.mono,
+    fontSize: 10,
     color: COLORS.concrete,
-    textTransform: 'uppercase',
     letterSpacing: 3,
+    textTransform: 'uppercase',
   },
   headerTitle: {
     fontFamily: FONTS.uiExtraBold,
-    fontSize: 24,
+    fontSize: 26,
     color: COLORS.ghost,
     marginTop: 2,
   },
+  headerRight: {
+    alignItems: 'flex-end',
+  },
+  streakLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: COLORS.concrete,
+    letterSpacing: 2,
+  },
+  streakCount: {
+    fontFamily: FONTS.uiExtraBold,
+    fontSize: 24,
+    color: COLORS.amber,
+  },
+
+  // Tabs
   tabs: {
     flexDirection: 'row',
     marginHorizontal: 20,
-    marginBottom: 16,
+    marginBottom: 20,
     gap: 24,
   },
   tab: {
@@ -205,11 +295,10 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   tabText: {
-    fontFamily: FONTS.uiBold,
-    fontSize: 12,
+    fontFamily: FONTS.monoBold,
+    fontSize: 11,
     color: COLORS.concrete,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
+    letterSpacing: 1.5,
   },
   tabTextActive: {
     color: COLORS.amber,
@@ -219,135 +308,217 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 2,
+    height: 1,
     backgroundColor: COLORS.amber,
-    borderRadius: 1,
   },
-  expeditionCard: {
-    backgroundColor: COLORS.navyMid,
-    borderRadius: 14,
+
+  // Section labels
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginHorizontal: 20,
     marginBottom: 12,
-    padding: 16,
+    marginTop: 24,
   },
-  cardTopRow: {
+  sectionLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: COLORS.concrete,
+    letterSpacing: 3,
+    textTransform: 'uppercase',
+  },
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.classified,
+  },
+
+  // Stage stepper (demo)
+  stageStepper: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    marginHorizontal: 20,
+    marginTop: 16,
+    gap: 8,
+  },
+  stageBtn: {
+    flex: 1,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: COLORS.navyLight,
+    borderRadius: 2,
     alignItems: 'center',
   },
-  expeditionLabel: {
-    fontFamily: FONTS.uiBold,
-    fontSize: 10,
-    color: COLORS.amber,
-    textTransform: 'uppercase',
+  stageBtnActive: {
+    borderColor: COLORS.amber,
+    backgroundColor: COLORS.navyMid,
+  },
+  stageBtnText: {
+    fontFamily: FONTS.mono,
+    fontSize: 8,
+    color: COLORS.concrete,
     letterSpacing: 1,
   },
-  expiresText: {
-    fontFamily: FONTS.ui,
-    fontSize: 10,
+  stageBtnTextActive: {
+    color: COLORS.amber,
+  },
+  stageHint: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
     color: COLORS.concrete,
+    opacity: 0.4,
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 4,
   },
-  cluePhoto: {
-    backgroundColor: COLORS.navyLight,
-    height: 120,
-    borderRadius: 8,
-    marginVertical: 12,
-    alignItems: 'center',
+
+  // Pins row
+  pinsRow: {
+    flexDirection: 'row',
     justifyContent: 'center',
+    gap: 24,
+    marginTop: 24,
+    marginBottom: 8,
   },
-  cluePhotoEmoji: {
-    fontSize: 32,
+  pinsHint: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
+    color: COLORS.concrete,
+    opacity: 0.4,
+    textAlign: 'center',
+    marginBottom: 4,
   },
-  clueText: {
-    fontFamily: FONTS.challengeItalic,
-    fontSize: 13,
-    color: COLORS.ghost,
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  cardBottomRow: {
+
+  // Nearby list
+  nearbyCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
-  },
-  plantedBy: {
-    fontFamily: FONTS.ui,
-    fontSize: 11,
-    color: COLORS.concrete,
-  },
-  pointsBadge: {
-    fontFamily: FONTS.uiBold,
-    fontSize: 12,
-    color: COLORS.amber,
-  },
-  foundButton: {
-    backgroundColor: COLORS.amber,
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  foundButtonText: {
-    fontFamily: FONTS.uiExtraBold,
-    fontSize: 14,
-    color: COLORS.navy,
-  },
-  territoryHeader: {
-    alignItems: 'center',
     marginHorizontal: 20,
-    marginBottom: 20,
+    marginBottom: 8,
+    backgroundColor: COLORS.navyMid,
+    borderRadius: 4,
+    padding: 14,
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.navyLight,
   },
-  locationCount: {
-    fontFamily: FONTS.uiExtraBold,
-    fontSize: 28,
+  nearbyLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  nearbyDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  nearbyLabel: {
+    fontFamily: FONTS.monoBold,
+    fontSize: 12,
     color: COLORS.ghost,
+    letterSpacing: 1,
   },
-  dayCount: {
-    fontFamily: FONTS.ui,
-    fontSize: 13,
+  nearbyDiff: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
     color: COLORS.concrete,
+    letterSpacing: 1.5,
     marginTop: 2,
   },
+  nearbyRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  nearbyDistance: {
+    fontFamily: FONTS.monoBold,
+    fontSize: 13,
+    letterSpacing: 1,
+  },
+  nearbyArrow: {
+    fontFamily: FONTS.uiBold,
+    fontSize: 18,
+    color: COLORS.concrete,
+  },
+
+  // Territory
+  territoryCard: {
+    marginHorizontal: 20,
+    marginTop: 8,
+    backgroundColor: COLORS.navyMid,
+    borderRadius: 4,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: COLORS.amber,
+  },
+  territoryZone: {
+    fontFamily: FONTS.uiExtraBold,
+    fontSize: 22,
+    color: COLORS.ghost,
+    marginBottom: 4,
+  },
+  territoryRankRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginBottom: 16,
+  },
+  territoryRank: {
+    fontFamily: FONTS.uiExtraBold,
+    fontSize: 32,
+    color: COLORS.amber,
+  },
+  territoryRankLabel: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: COLORS.concrete,
+    letterSpacing: 2,
+  },
+  territoryBar: {
+    height: 3,
+    backgroundColor: COLORS.navyLight,
+    borderRadius: 2,
+    marginBottom: 8,
+  },
+  territoryBarFill: {
+    height: 3,
+    backgroundColor: COLORS.amber,
+    borderRadius: 2,
+  },
+  territoryProgress: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: COLORS.concrete,
+    letterSpacing: 1,
+  },
+
+  // Photo grid
   photoGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginHorizontal: 20,
     gap: 6,
-    marginBottom: 20,
   },
   photoCell: {
     width: '31.5%',
     aspectRatio: 1,
   },
-  photoInner: {
+  photoCellInner: {
     flex: 1,
-    backgroundColor: COLORS.navyLight,
-    borderRadius: 8,
+    backgroundColor: COLORS.navyMid,
+    borderRadius: 2,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
   },
-  photoEmoji: {
-    fontSize: 28,
+  photoCellIcon: {
+    fontSize: 24,
   },
-  rankDot: {
+  photoCellDot: {
     position: 'absolute',
     bottom: 6,
     right: 6,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  plantButton: {
-    backgroundColor: COLORS.amber,
-    borderRadius: 12,
-    paddingVertical: 14,
-    marginHorizontal: 20,
-    alignItems: 'center',
-  },
-  plantButtonText: {
-    fontFamily: FONTS.uiExtraBold,
-    fontSize: 15,
-    color: COLORS.navy,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
 });
