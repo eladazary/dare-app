@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "Dare",
-    "slug": "dare",
+    "name": "Tracer",
+    "slug": "tracer",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "scheme": "dare",
+    "scheme": "tracer",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
@@ -17,14 +17,14 @@
     ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "app.thedare.dare"
+      "bundleIdentifier": "app.runtracer.tracer"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0A0A0A"
       },
-      "package": "app.thedare.dare"
+      "package": "app.runtracer.tracer"
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -35,15 +35,15 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Dare needs camera access to capture your challenge moments.",
-          "microphonePermission": "Dare needs microphone access to record video of your challenges.",
+          "cameraPermission": "Tracer needs camera access to capture proof of your finds.",
+          "microphonePermission": "Tracer needs microphone access to record video.",
           "recordAudioAndroid": true
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Dare uses your location to show challenges available in your city."
+          "locationWhenInUsePermission": "Tracer uses your location to show ciphers nearby."
         }
       ],
       [
@@ -61,11 +61,10 @@
     "extra": {
       "EXPO_PUBLIC_SUPABASE_URL": "",
       "EXPO_PUBLIC_SUPABASE_ANON_KEY": "",
-      "EXPO_PUBLIC_CLOUDFLARE_WORKER_URL": "",
       "eas": {
         "projectId": ""
       }
     },
-    "description": "The city dares you. One challenge every day."
+    "description": "The world dares you. Every day."
   }
 }

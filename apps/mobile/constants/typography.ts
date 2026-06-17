@@ -4,6 +4,10 @@ export const FONTS = {
   uiExtraBold: 'SpaceGrotesk_700Bold',
   challenge: 'PlayfairDisplay_700Bold',
   challengeItalic: 'PlayfairDisplay_400Regular_Italic',
+  // Cipher card — typewriter aesthetic. Upgrade to SpaceMono_400Regular
+  // by installing @expo-google-fonts/space-mono when available.
+  mono: 'SpaceGrotesk_400Regular',
+  monoBold: 'SpaceGrotesk_700Bold',
 } as const;
 
 export const TYPE_SCALE = {
