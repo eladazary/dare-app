@@ -10,7 +10,7 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
 } from 'react-native';
-import MapView, { Marker, Polygon, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Marker, Polygon, PROVIDER_DEFAULT } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const SCREEN_H = Dimensions.get('window').height;
@@ -58,6 +58,11 @@ async function seedTracesNearMe(lat: number, lng: number) {
   if (error) console.error('Seed error:', error.message);
   else console.log('✅ 5 test traces seeded near you');
 }
+
+const DIFF_COLOR: Record<string, string> = {
+  easy: COLORS.green, medium: COLORS.amber,
+  hard: COLORS.classified, legendary: COLORS.purple,
+};
 
 const DARK_MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#0A0A0A' }] },
@@ -269,31 +274,33 @@ export default function MapScreen() {
           longitudeDelta: 0.012,
         }}
       >
-        {/* Trace search zones — show the area, not the exact spot */}
+        {/* Floating trace chips */}
         {traces.filter(t => !t.already_solved).map((trace) => {
           const isActive = trace.distance_meters <= trace.notify_radius_meters;
+          const col = DIFF_COLOR[trace.difficulty] ?? COLORS.amber;
           return (
-            <React.Fragment key={trace.id}>
-              {/* Zone circle — fixed visual size, not tied to actual radius */}
-              <Circle
-                center={{ latitude: trace.lat, longitude: trace.lng }}
-                radius={isActive ? 80 : 120}
-                fillColor={isActive ? 'rgba(184,134,11,0.10)' : 'rgba(138,138,138,0.05)'}
-                strokeColor={isActive ? 'rgba(184,134,11,0.6)' : 'rgba(138,138,138,0.2)'}
-                strokeWidth={isActive ? 2 : 1}
-              />
-              {/* Invisible tap target at center — small dot only, no pointed pin */}
-              <Marker
-                coordinate={{ latitude: trace.lat, longitude: trace.lng }}
-                onPress={() => openTrace(trace)}
-                anchor={{ x: 0.5, y: 0.5 }}
-                tracksViewChanges={false}
-              >
-                <View style={styles.zoneCenter}>
-                  <View style={[styles.zoneDot, isActive && styles.zoneDotActive]} />
+            <Marker
+              key={trace.id}
+              coordinate={{ latitude: trace.lat, longitude: trace.lng }}
+              onPress={() => openTrace(trace)}
+              anchor={{ x: 0.5, y: 1.15 }}
+              tracksViewChanges={false}
+            >
+              <View style={styles.chipWrapper}>
+                <View style={[
+                  styles.chip,
+                  { borderColor: col },
+                  isActive && { backgroundColor: col },
+                ]}>
+                  <Text style={[styles.chipDot, { color: isActive ? COLORS.navy : col }]}>●</Text>
+                  <Text style={[styles.chipLabel, { color: isActive ? COLORS.navy : col }]}>
+                    {trace.difficulty.toUpperCase()}
+                    {trace.xp_multiplier > 1 ? ` ${trace.xp_multiplier}×` : ''}
+                  </Text>
                 </View>
-              </Marker>
-            </React.Fragment>
+                <View style={[styles.chipTip, { borderTopColor: isActive ? col : col + '80' }]} />
+              </View>
+            </Marker>
           );
         })}
 
@@ -504,21 +511,25 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.navy,
   },
-  zoneCenter: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: 'transparent',
-    alignItems: 'center', justifyContent: 'center',
+  chipWrapper: {
+    alignItems: 'center',
   },
-  zoneDot: {
-    width: 10, height: 10, borderRadius: 5,
-    backgroundColor: 'rgba(138,138,138,0.5)',
-    borderWidth: 1.5, borderColor: 'rgba(138,138,138,0.8)',
+  chip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 20, borderWidth: 1.5,
+    backgroundColor: 'rgba(10,10,10,0.85)',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4, shadowRadius: 4, elevation: 4,
   },
-  zoneDotActive: {
-    backgroundColor: 'rgba(184,134,11,0.7)',
-    borderColor: COLORS.amber,
+  chipDot: { fontSize: 7 },
+  chipLabel: { fontFamily: FONTS.monoBold, fontSize: 10, letterSpacing: 1 },
+  chipTip: {
+    width: 0, height: 0,
+    borderLeftWidth: 5, borderRightWidth: 5,
+    borderTopWidth: 6,
+    borderLeftColor: 'transparent', borderRightColor: 'transparent',
   },
-  zoneCenterActive: {},
   centerFill: {
     flex: 1,
     backgroundColor: COLORS.navy,
