@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
+import * as AuthSession from 'expo-auth-session';
 import { supabase } from '@/lib/supabase';
 import { COLORS } from '@/constants/colors';
 import { useAuthStore } from '@/store/auth';
@@ -24,8 +25,10 @@ export default function OnboardingIndex() {
   const handleSendMagicLink = async () => {
     if (!email.trim()) return;
     setLoading(true);
-    // redirectTo must match a URL in Supabase Auth → URL Configuration
-    const redirectTo = Linking.createURL('/auth/callback');
+    // makeRedirectUri gives a stable URL that works in both Expo Go and production.
+    // Add the logged URL to Supabase → Auth → URL Configuration → Redirect URLs.
+    const redirectTo = AuthSession.makeRedirectUri({ scheme: 'tracer', path: 'auth/callback' });
+    console.log('[Tracer] Magic link redirect URL:', redirectTo);
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
       options: { emailRedirectTo: redirectTo },
