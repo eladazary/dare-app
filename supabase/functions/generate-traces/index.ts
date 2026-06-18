@@ -48,13 +48,22 @@ const resolvedModel   = LLM_MODEL   !== "llama-3.3-70b-versatile"         ? LLM_
 // Types
 // ─────────────────────────────────────────────
 
-interface GenerateRequest {
+interface PoiInput {
+  name: string;
   lat: number;
   lng: number;
+  type?: string;        // bar, cafe, artwork, park, etc.
+  description?: string;
+}
+
+interface GenerateRequest {
+  lat?: number;
+  lng?: number;
   radius_meters?: number;
   arena_id?: string;
   count?: number;       // max traces to generate (default 20)
   dry_run?: boolean;    // return clues without inserting
+  pois?: PoiInput[];    // skip Overpass — provide POIs directly
 }
 
 interface OsmPoi {
@@ -87,45 +96,30 @@ const OVERPASS_MIRRORS = [
 ];
 
 async function fetchPois(lat: number, lng: number, radius: number): Promise<OsmPoi[]> {
-  // Focus on places people actually want to find — trendy, visual, alive
-  const query = `[out:json][timeout:20];(
-node["tourism"="artwork"](around:${radius},${lat},${lng});
-node["tourism"="viewpoint"](around:${radius},${lat},${lng});
-node["amenity"="marketplace"](around:${radius},${lat},${lng});
-node["amenity"="fountain"](around:${radius},${lat},${lng});
-node["leisure"="playground"]["name"](around:${radius},${lat},${lng});
-node["leisure"="park"]["name"](around:${radius},${lat},${lng});
-node["shop"="bakery"]["name"](around:${radius},${lat},${lng});
-node["amenity"="cafe"]["name"]["outdoor_seating"="yes"](around:${radius},${lat},${lng});
-node["amenity"="bar"]["name"](around:${radius},${lat},${lng});
-node["amenity"="nightclub"]["name"](around:${radius},${lat},${lng});
-node["amenity"="theatre"]["name"](around:${radius},${lat},${lng});
-node["amenity"="cinema"]["name"](around:${radius},${lat},${lng});
-node["shop"="music"]["name"](around:${radius},${lat},${lng});
-node["shop"="books"]["name"](around:${radius},${lat},${lng});
-node["shop"="records"]["name"](around:${radius},${lat},${lng});
-node["amenity"="arts_centre"]["name"](around:${radius},${lat},${lng});
-node["building"="roof"]["name"](around:${radius},${lat},${lng});
-node["natural"="beach"]["name"](around:${radius},${lat},${lng});
-node["natural"="cliff"]["name"](around:${radius},${lat},${lng});
-node["man_made"="lighthouse"]["name"](around:${radius},${lat},${lng});
-node["man_made"="water_tower"]["name"](around:${radius},${lat},${lng});
-node["historic"="wayside_cross"]["name"](around:${radius},${lat},${lng});
-);out body;`;
+  // Trendy, alive places — bars, cafes, art, markets, viewpoints
+  const r = radius;
+  const q = `[out:json][timeout:20];(node["tourism"="artwork"](around:${r},${lat},${lng});node["tourism"="viewpoint"]["name"](around:${r},${lat},${lng});node["amenity"="bar"]["name"](around:${r},${lat},${lng});node["amenity"="pub"]["name"](around:${r},${lat},${lng});node["amenity"="nightclub"]["name"](around:${r},${lat},${lng});node["amenity"="marketplace"]["name"](around:${r},${lat},${lng});node["amenity"="fountain"]["name"](around:${r},${lat},${lng});node["amenity"="theatre"]["name"](around:${r},${lat},${lng});node["amenity"="arts_centre"]["name"](around:${r},${lat},${lng});node["shop"="bakery"]["name"](around:${r},${lat},${lng});node["shop"="records"]["name"](around:${r},${lat},${lng});node["shop"="books"]["name"](around:${r},${lat},${lng});node["natural"="beach"]["name"](around:${r},${lat},${lng});node["man_made"="lighthouse"]["name"](around:${r},${lat},${lng});node["leisure"="park"]["name"](around:${r},${lat},${lng}););out body;`;
+  const query = q;
 
   let lastError = "";
   for (const mirror of OVERPASS_MIRRORS) {
     try {
-      // GET request with query in URL — most compatible
+      const ctrl = new AbortController();
+      const timeout = setTimeout(() => ctrl.abort(), 10_000); // 10s max per mirror
       const url = `${mirror}?data=${encodeURIComponent(query)}`;
       const resp = await fetch(url, {
+        signal: ctrl.signal,
         headers: { "Accept": "application/json", "User-Agent": "Tracer/1.0" },
       });
+      clearTimeout(timeout);
       if (!resp.ok) { lastError = `${mirror} → ${resp.status}`; continue; }
       const data = await resp.json();
-      return (data.elements ?? []).filter((e: OsmPoi) => e.tags?.name);
+      const pois = (data.elements ?? []).filter((e: OsmPoi) => e.tags?.name);
+      console.log(`${mirror}: ${pois.length} POIs`);
+      return pois;
     } catch (e) {
       lastError = `${mirror} → ${String(e)}`;
+      console.log(`Mirror failed: ${lastError}`);
     }
   }
   throw new Error(`All Overpass mirrors failed. Last: ${lastError}`);
@@ -287,31 +281,42 @@ Deno.serve(async (req: Request) => {
     arena_id,
     count = 20,
     dry_run = false,
+    pois: providedPois,
   }: GenerateRequest = await req.json();
-
-  if (!lat || !lng) {
-    return new Response(JSON.stringify({ error: "lat and lng required" }), { status: 400 });
-  }
 
   console.log(`Provider: ${LLM_PROVIDER} / ${resolvedModel}`);
 
-  // 1. Fetch POIs
-  let pois: OsmPoi[];
-  try {
-    pois = await fetchPois(lat, lng, radius_meters);
-  } catch (e) {
-    return new Response(JSON.stringify({ error: `Overpass: ${String(e)}` }), { status: 502 });
+  // 1. Use provided POIs or fetch from Overpass
+  let unique: OsmPoi[];
+
+  if (providedPois && providedPois.length > 0) {
+    // Convert PoiInput → OsmPoi shape
+    unique = providedPois.slice(0, count).map((p, i) => ({
+      id: i,
+      lat: p.lat,
+      lon: p.lng,
+      tags: { name: p.name, amenity: p.type ?? "place", description: p.description ?? "" },
+    }));
+  } else {
+    if (!lat || !lng) {
+      return new Response(JSON.stringify({ error: "Either pois[] or lat+lng required" }), { status: 400 });
+    }
+    let pois: OsmPoi[];
+    try {
+      pois = await fetchPois(lat, lng, radius_meters);
+    } catch (e) {
+      return new Response(JSON.stringify({ error: `Overpass: ${String(e)}` }), { status: 502 });
+    }
+    const seen = new Set<string>();
+    unique = pois.filter(p => {
+      const n = poiDisplayName(p);
+      if (seen.has(n)) return false;
+      seen.add(n);
+      return true;
+    }).slice(0, count);
   }
 
-  const seen = new Set<string>();
-  const unique = pois.filter(p => {
-    const n = poiDisplayName(p);
-    if (seen.has(n)) return false;
-    seen.add(n);
-    return true;
-  }).slice(0, count);
-
-  console.log(`POIs found: ${pois.length}, processing: ${unique.length}`);
+  console.log(`POIs processing: ${unique.length}`);
 
   // 2. Generate clues sequentially to stay within edge function memory limits
   const traces: GeneratedTrace[] = [];
@@ -333,7 +338,13 @@ Deno.serve(async (req: Request) => {
   // 3. Dry run — return without inserting
   if (dry_run) {
     return new Response(
-      JSON.stringify({ provider: `${LLM_PROVIDER}/${resolvedModel}`, generated: traces.length, traces }),
+      JSON.stringify({
+        provider: `${LLM_PROVIDER}/${resolvedModel}`,
+        pois_processed: unique.length,
+        generated: traces.length,
+        sample_poi_names: unique.slice(0, 5).map(poiDisplayName),
+        traces,
+      }),
       { headers: { "Content-Type": "application/json" } },
     );
   }
@@ -359,7 +370,6 @@ Deno.serve(async (req: Request) => {
   return new Response(
     JSON.stringify({
       provider: `${LLM_PROVIDER}/${resolvedModel}`,
-      pois_found: pois.length,
       generated: insertedCount,
       errors: insertErrors.length > 0 ? insertErrors : undefined,
     }),
