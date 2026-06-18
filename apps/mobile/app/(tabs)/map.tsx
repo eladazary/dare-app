@@ -140,17 +140,25 @@ export default function MapScreen() {
       return;
     }
 
-    // Write solve to DB (best-effort — preview mode may have no user)
+    // Write solve to DB using public.users.id (not auth.uid)
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      const elapsed = Math.round((Date.now() - startedAtRef.current) / 1000);
-      await supabase.from('trace_solves').upsert({
-        trace_id: activeTrace.id,
-        user_id: user.id,
-        attempts_used: activeTrace.max_attempts - attemptsLeft + 1,
-        time_to_solve_seconds: elapsed,
-        selfie_url: selfieUri,
-      }, { onConflict: 'trace_id,user_id' });
+      const { data: publicUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('auth_id', user.id)
+        .single();
+
+      if (publicUser) {
+        const elapsed = Math.round((Date.now() - startedAtRef.current) / 1000);
+        await supabase.from('trace_solves').upsert({
+          trace_id: activeTrace.id,
+          user_id: publicUser.id,
+          attempts_used: activeTrace.max_attempts - attemptsLeft + 1,
+          time_to_solve_seconds: elapsed,
+          selfie_url: selfieUri,
+        }, { onConflict: 'trace_id,user_id' });
+      }
     }
 
     Animated.timing(slideAnim, { toValue: SCREEN_H, duration: 250, useNativeDriver: true }).start();
