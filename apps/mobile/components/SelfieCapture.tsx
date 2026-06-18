@@ -113,6 +113,10 @@ export default function SelfieCapture({ distanceMeters, solveRadius, onCapture, 
                 : <View style={styles.shutterInner} />
               }
             </TouchableOpacity>
+            {/* DEV: skip camera in simulator */}
+            <TouchableOpacity onPress={() => onCapture('dev-placeholder')}>
+              <Text style={styles.devSkipText}>DEV: Skip camera →</Text>
+            </TouchableOpacity>
           </>
         )}
       </SafeAreaView>
@@ -248,5 +252,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.concrete,
     letterSpacing: 1,
+  },
+  devSkipText: {
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+    color: COLORS.amber,
+    letterSpacing: 1,
+    opacity: 0.6,
+    marginTop: 8,
   },
 });
