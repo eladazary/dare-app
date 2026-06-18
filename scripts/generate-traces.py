@@ -142,6 +142,23 @@ except (ValueError, IndexError):
 
 limit = len(pois) if do_all else min(len(pois), 20)
 pois = pois[:limit]
+
+# Skip places already in DB
+existing_result = subprocess.run(
+    ["curl", "-s",
+     f"{SUPABASE_URL}/rest/v1/traces?select=place_name",
+     "-H", f"apikey: {ANON_KEY}"],
+    capture_output=True, text=True, timeout=10,
+)
+try:
+    existing_names = {r["place_name"] for r in json.loads(existing_result.stdout)}
+    before = len(pois)
+    pois = [p for p in pois if p["name"] not in existing_names]
+    if before != len(pois):
+        print(f"  ↳ Skipping {before - len(pois)} already generated")
+except Exception:
+    pass  # if check fails, just proceed
+
 print(f"→ Generating clues for {len(pois)} places...")
 
 # Process in batches
@@ -167,7 +184,7 @@ for i in range(0, len(pois), BATCH_SIZE):
     except Exception as ex:
         print(f"  ✗ Batch failed: {ex}")
     if i + BATCH_SIZE < len(pois):
-        time.sleep(3)  # avoid Groq rate limit between batches
+        time.sleep(20)  # Groq free tier: 6000 tokens/min, ~550 per trace
 
 print(f"\n✓ Done! {total_generated} traces added to DB for {city_label}.")
 if total_errors:
