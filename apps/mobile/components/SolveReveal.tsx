@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -59,6 +59,11 @@ export default function SolveReveal({ placeName, difficulty, selfieUri, timeSeco
     <View style={styles.root}>
       <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, bgStyle]} />
 
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+
       {/* Polaroid card */}
       <Animated.View style={[styles.card, cardStyle]}>
         {/* Selfie area */}
@@ -97,6 +102,8 @@ export default function SolveReveal({ placeName, difficulty, selfieUri, timeSeco
           <Text style={styles.continueText}>Continue →</Text>
         </TouchableOpacity>
       </Animated.View>
+
+      </ScrollView>
     </View>
   );
 }
@@ -104,9 +111,14 @@ export default function SolveReveal({ placeName, difficulty, selfieUri, timeSeco
 const styles = StyleSheet.create({
   root: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 200,
+  },
+  scrollContent: {
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 200,
+    paddingVertical: 60,
+    paddingHorizontal: 20,
   },
   backdrop: {
     backgroundColor: 'rgba(0,0,0,0.92)',
