@@ -1,6 +1,6 @@
 import React from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { Animated } from 'react-native';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { COLORS } from '@/constants/colors';
@@ -24,16 +24,16 @@ interface Props {
 }
 
 export default function FeedItem({ submission, onVote }: Props) {
-  const isExpanded = useSharedValue(false);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    height: withTiming(isExpanded.value ? 340 : 80, { duration: 250 }),
-    borderColor: isExpanded.value ? COLORS.amber : 'transparent',
-  }));
+  const [isExpanded, setIsExpanded] = React.useState(false);
+  const height = React.useRef(new Animated.Value(80)).current;
 
   const handlePress = () => {
-    isExpanded.value = !isExpanded.value;
+    const next = !isExpanded;
+    setIsExpanded(next);
+    Animated.timing(height, { toValue: next ? 340 : 80, duration: 250, useNativeDriver: false }).start();
   };
+
+  const animatedStyle = { height, borderColor: isExpanded ? COLORS.amber : 'transparent' };
 
   const rankIsFirst = submission.city_rank === 1;
 
