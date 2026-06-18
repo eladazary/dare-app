@@ -1,14 +1,19 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Animated,
+  Dimensions,
+  ScrollView,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
+
+const SCREEN_H = Dimensions.get('window').height;
 
 import { COLORS } from '@/constants/colors';
 import { FONTS } from '@/constants/typography';
@@ -69,7 +74,7 @@ function difficultyToStage(
 
 export default function MapScreen() {
   const mapRef = useRef<MapView>(null);
-  const sheetRef = useRef<any>(null);
+  const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
 
   const { location, error: locationError, granted } = useLocation();
   const { data: traces = [], isLoading, refetch } = useNearbyTraces(location);
@@ -86,14 +91,15 @@ export default function MapScreen() {
     setActiveTrace(trace);
     setAttemptsLeft(trace.max_attempts);
     startedAtRef.current = Date.now();
-    sheetRef.current?.expand();
-  }, []);
+    Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
+  }, [slideAnim]);
 
   const closeTrace = useCallback(() => {
-    sheetRef.current?.close();
-    setActiveTrace(null);
-    setSolveResult(null);
-  }, []);
+    Animated.timing(slideAnim, { toValue: SCREEN_H, duration: 250, useNativeDriver: true }).start(() => {
+      setActiveTrace(null);
+      setSolveResult(null);
+    });
+  }, [slideAnim]);
 
   const handleSubmit = useCallback(() => {
     setShowCamera(true);
@@ -298,19 +304,17 @@ export default function MapScreen() {
         />
       )}
 
-      {/* TraceCard bottom sheet */}
-      <BottomSheet
-        ref={sheetRef}
-        index={-1}
-        snapPoints={['55%', '88%']}
-        enablePanDownToClose
-        onClose={closeTrace}
-        backgroundStyle={styles.sheetBg}
-        handleIndicatorStyle={styles.sheetHandle}
-      >
-        <BottomSheetScrollView contentContainerStyle={styles.sheetContent}>
-          {activeTrace && (
-            <>
+      {/* TraceCard slide-up panel */}
+      {activeTrace && (
+        <>
+          <TouchableWithoutFeedback onPress={closeTrace}>
+            <View style={styles.backdrop} />
+          </TouchableWithoutFeedback>
+          <Animated.View style={[styles.panel, { transform: [{ translateY: slideAnim }] }]}>
+            <TouchableOpacity style={styles.panelHandle} onPress={closeTrace}>
+              <View style={styles.handleBar} />
+            </TouchableOpacity>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetContent}>
               <TraceCard
                 id={activeTrace.id}
                 segments={parseClue(activeTrace.clue)}
@@ -326,10 +330,10 @@ export default function MapScreen() {
                   ? 'No one has found this yet.'
                   : `${activeTrace.solve_count} tracer${activeTrace.solve_count === 1 ? '' : 's'} found this.`}
               </Text>
-            </>
-          )}
-        </BottomSheetScrollView>
-      </BottomSheet>
+            </ScrollView>
+          </Animated.View>
+        </>
+      )}
     </View>
   );
 }
@@ -426,17 +430,31 @@ const styles = StyleSheet.create({
     color: COLORS.amber,
     letterSpacing: 2,
   },
-  sheetBg: {
-    backgroundColor: COLORS.navyMid,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
   },
-  sheetHandle: {
-    backgroundColor: COLORS.navyLight,
+  panel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '60%',
+    backgroundColor: COLORS.navyMid,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+  },
+  panelHandle: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  handleBar: {
     width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.navyLight,
   },
   sheetContent: {
-    paddingTop: 8,
     paddingBottom: 48,
   },
   devSeedBtn: {
