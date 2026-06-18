@@ -273,13 +273,13 @@ export default function MapScreen() {
           const isActive = trace.distance_meters <= trace.notify_radius_meters;
           return (
             <React.Fragment key={trace.id}>
-              {/* Zone circle — shows search area, not exact location */}
+              {/* Zone circle — fixed visual size, not tied to actual radius */}
               <Circle
                 center={{ latitude: trace.lat, longitude: trace.lng }}
-                radius={trace.notify_radius_meters}
-                fillColor={isActive ? 'rgba(184,134,11,0.08)' : 'rgba(138,138,138,0.05)'}
-                strokeColor={isActive ? 'rgba(184,134,11,0.5)' : 'rgba(138,138,138,0.2)'}
-                strokeWidth={isActive ? 1.5 : 1}
+                radius={isActive ? 80 : 120}
+                fillColor={isActive ? 'rgba(184,134,11,0.10)' : 'rgba(138,138,138,0.05)'}
+                strokeColor={isActive ? 'rgba(184,134,11,0.6)' : 'rgba(138,138,138,0.2)'}
+                strokeWidth={isActive ? 2 : 1}
               />
               {/* Invisible tap target at center — small dot only, no pointed pin */}
               <Marker
