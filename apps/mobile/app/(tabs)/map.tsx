@@ -16,6 +16,7 @@ import TraceCard, { parseClue, type TraceStage } from '@/components/TraceCard';
 import TracePin from '@/components/TracePin';
 import SelfieCapture from '@/components/SelfieCapture';
 import SolveReveal from '@/components/SolveReveal';
+import TauntModal from '@/components/TauntModal';
 import { useLocation, useNearbyTraces, type NearbyTrace } from '@/hooks/useTraces';
 import { supabase } from '@/lib/supabase';
 
@@ -77,6 +78,7 @@ export default function MapScreen() {
   const [attemptsLeft, setAttemptsLeft] = useState(3);
   const [showCamera, setShowCamera] = useState(false);
   const [solveResult, setSolveResult] = useState<{ selfieUri: string; startedAt: number } | null>(null);
+  const [showTaunt, setShowTaunt] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const startedAtRef = useRef<number>(0);
 
@@ -276,8 +278,23 @@ export default function MapScreen() {
           difficulty={activeTrace.difficulty}
           selfieUri={solveResult.selfieUri}
           timeSeconds={Math.round((Date.now() - solveResult.startedAt) / 1000)}
-          onTaunt={() => {}}
+          onTaunt={() => setShowTaunt(true)}
           onContinue={handleContinue}
+        />
+      )}
+
+      {/* Taunt modal */}
+      {solveResult && activeTrace && (
+        <TauntModal
+          visible={showTaunt}
+          traceId={activeTrace.id}
+          traceName={activeTrace.place_name ?? 'Unknown place'}
+          solveTimeSeconds={Math.round((Date.now() - solveResult.startedAt) / 1000)}
+          onClose={() => setShowTaunt(false)}
+          onSent={(username) => {
+            setShowTaunt(false);
+            handleContinue();
+          }}
         />
       )}
 
