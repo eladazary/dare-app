@@ -3,6 +3,7 @@ import { StyleSheet } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Linking from 'expo-linking';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -17,6 +18,28 @@ import {
 
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
+
+async function handleAuthDeepLink(url: string) {
+  const parsed = Linking.parse(url);
+
+  // PKCE flow — ?code=xxx
+  const code = parsed.queryParams?.code as string | undefined;
+  if (code) {
+    await supabase.auth.exchangeCodeForSession(code);
+    return;
+  }
+
+  // Implicit flow fallback — #access_token=xxx&refresh_token=xxx
+  const hash = url.split('#')[1];
+  if (hash) {
+    const params = new URLSearchParams(hash);
+    const access_token = params.get('access_token');
+    const refresh_token = params.get('refresh_token');
+    if (access_token && refresh_token) {
+      await supabase.auth.setSession({ access_token, refresh_token });
+    }
+  }
+}
 
 // Keep the splash visible while we fetch resources.
 SplashScreen.preventAutoHideAsync();
@@ -53,7 +76,24 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       setSession(initialSession);
     });
 
-    return () => subscription.unsubscribe();
+    // Handle magic link when app is already open.
+    const linkSub = Linking.addEventListener('url', ({ url }) => {
+      if (url.includes('auth/callback') || url.includes('access_token') || url.includes('code=')) {
+        handleAuthDeepLink(url);
+      }
+    });
+
+    // Handle magic link when app is cold-started from the link.
+    Linking.getInitialURL().then((url) => {
+      if (url && (url.includes('auth/callback') || url.includes('access_token') || url.includes('code='))) {
+        handleAuthDeepLink(url);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+      linkSub.remove();
+    };
   }, [setSession]);
 
   useEffect(() => {
@@ -103,6 +143,7 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+            <Stack.Screen name="auth" options={{ headerShown: false }} />
           </Stack>
         </AuthGate>
       </QueryClientProvider>

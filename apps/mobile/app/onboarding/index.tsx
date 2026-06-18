@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Linking from 'expo-linking';
 import { supabase } from '@/lib/supabase';
 import { COLORS } from '@/constants/colors';
 import { useAuthStore } from '@/store/auth';
@@ -23,7 +24,12 @@ export default function OnboardingIndex() {
   const handleSendMagicLink = async () => {
     if (!email.trim()) return;
     setLoading(true);
-    const { error } = await supabase.auth.signInWithOtp({ email: email.trim() });
+    // redirectTo must match a URL in Supabase Auth → URL Configuration
+    const redirectTo = Linking.createURL('/auth/callback');
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: { emailRedirectTo: redirectTo },
+    });
     setLoading(false);
     if (!error) setSent(true);
   };
