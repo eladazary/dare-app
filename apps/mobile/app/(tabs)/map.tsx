@@ -10,7 +10,7 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
 } from 'react-native';
-import MapView, { Marker, Polygon, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Marker, Polygon, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const SCREEN_H = Dimensions.get('window').height;
@@ -268,24 +268,34 @@ export default function MapScreen() {
           longitudeDelta: 0.012,
         }}
       >
-        {traces.filter(t => !t.already_solved).map((trace) => (
-          <Marker
-            key={trace.id}
-            coordinate={{ latitude: trace.lat, longitude: trace.lng }}
-            onPress={() => openTrace(trace)}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={false}
-          >
-            <TracePin
-              state={
-                trace.distance_meters <= trace.notify_radius_meters
-                  ? 'active'
-                  : 'undiscovered'
-              }
-              distanceMeters={Math.round(trace.distance_meters)}
-            />
-          </Marker>
-        ))}
+        {/* Trace search zones — show the area, not the exact spot */}
+        {traces.filter(t => !t.already_solved).map((trace) => {
+          const isActive = trace.distance_meters <= trace.notify_radius_meters;
+          return (
+            <React.Fragment key={trace.id}>
+              {/* Zone circle — shows search area, not exact location */}
+              <Circle
+                center={{ latitude: trace.lat, longitude: trace.lng }}
+                radius={trace.notify_radius_meters}
+                fillColor={isActive ? 'rgba(184,134,11,0.08)' : 'rgba(138,138,138,0.05)'}
+                strokeColor={isActive ? 'rgba(184,134,11,0.5)' : 'rgba(138,138,138,0.2)'}
+                strokeWidth={isActive ? 1.5 : 1}
+              />
+              {/* Invisible tap target at center — small dot only, no pointed pin */}
+              <Marker
+                coordinate={{ latitude: trace.lat, longitude: trace.lng }}
+                onPress={() => openTrace(trace)}
+                anchor={{ x: 0.5, y: 0.5 }}
+                tracksViewChanges={false}
+              >
+                <View style={[
+                  styles.zoneCenter,
+                  isActive && styles.zoneCenterActive,
+                ]} />
+              </Marker>
+            </React.Fragment>
+          );
+        })}
 
         {/* Fog of war — revealed zones */}
         {revealedZones.map((zone, i) => (
@@ -493,6 +503,15 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: COLORS.navy,
+  },
+  zoneCenter: {
+    width: 8, height: 8, borderRadius: 4,
+    backgroundColor: 'rgba(138,138,138,0.4)',
+    borderWidth: 1, borderColor: 'rgba(138,138,138,0.6)',
+  },
+  zoneCenterActive: {
+    backgroundColor: 'rgba(184,134,11,0.6)',
+    borderColor: 'rgba(184,134,11,0.9)',
   },
   centerFill: {
     flex: 1,
