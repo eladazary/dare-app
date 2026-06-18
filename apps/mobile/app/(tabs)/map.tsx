@@ -288,10 +288,9 @@ export default function MapScreen() {
                 anchor={{ x: 0.5, y: 0.5 }}
                 tracksViewChanges={false}
               >
-                <View style={[
-                  styles.zoneCenter,
-                  isActive && styles.zoneCenterActive,
-                ]} />
+                <View style={styles.zoneCenter}>
+                  <View style={[styles.zoneDot, isActive && styles.zoneDotActive]} />
+                </View>
               </Marker>
             </React.Fragment>
           );
@@ -505,14 +504,20 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.navy,
   },
   zoneCenter: {
-    width: 8, height: 8, borderRadius: 4,
-    backgroundColor: 'rgba(138,138,138,0.4)',
-    borderWidth: 1, borderColor: 'rgba(138,138,138,0.6)',
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: 'transparent',
+    alignItems: 'center', justifyContent: 'center',
   },
-  zoneCenterActive: {
-    backgroundColor: 'rgba(184,134,11,0.6)',
-    borderColor: 'rgba(184,134,11,0.9)',
+  zoneDot: {
+    width: 10, height: 10, borderRadius: 5,
+    backgroundColor: 'rgba(138,138,138,0.5)',
+    borderWidth: 1.5, borderColor: 'rgba(138,138,138,0.8)',
   },
+  zoneDotActive: {
+    backgroundColor: 'rgba(184,134,11,0.7)',
+    borderColor: COLORS.amber,
+  },
+  zoneCenterActive: {},
   centerFill: {
     flex: 1,
     backgroundColor: COLORS.navy,
