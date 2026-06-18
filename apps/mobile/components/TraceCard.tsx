@@ -85,18 +85,20 @@ function RedactionBar({
     }).start();
   }, [revealed]);
 
-  // Replace hidden text with █ blocks — same length, clearly classified
-  const blocks = content.replace(/[^\s]/g, '█');
+  // Estimate pill width based on character count
+  const pillWidth = Math.max(40, Math.min(content.length * 6, 140));
 
   return (
     <View style={styles.redactionWrapper}>
-      <Animated.Text style={[
-        styles.clueRevealedText,
-        { opacity: revealAnim },
-        !revealed && styles.clueHidden,
-      ]}>
-        {revealed ? content : blocks}
-      </Animated.Text>
+      {revealed ? (
+        <Animated.Text style={[styles.clueRevealedText, { opacity: revealAnim }]}>
+          {content}
+        </Animated.Text>
+      ) : (
+        <View style={[styles.hiddenPill, { width: pillWidth }]}>
+          <Text style={styles.hiddenDots}>• • •</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -449,10 +451,22 @@ const styles = StyleSheet.create({
     position: 'relative',
     justifyContent: 'center',
   },
-  clueHidden: {
+  hiddenPill: {
+    backgroundColor: 'rgba(184,134,11,0.15)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(184,134,11,0.3)',
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 2,
+  },
+  hiddenDots: {
+    fontFamily: FONTS.mono,
+    fontSize: 9,
     color: COLORS.amber,
+    letterSpacing: 3,
     opacity: 0.7,
-    letterSpacing: 1,
   },
   footer: {
     flexDirection: 'row',

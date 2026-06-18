@@ -268,7 +268,7 @@ export default function MapScreen() {
           longitudeDelta: 0.012,
         }}
       >
-        {traces.map((trace) => (
+        {traces.filter(t => !t.already_solved).map((trace) => (
           <Marker
             key={trace.id}
             coordinate={{ latitude: trace.lat, longitude: trace.lng }}
@@ -278,9 +278,7 @@ export default function MapScreen() {
           >
             <TracePin
               state={
-                trace.already_solved
-                  ? 'solved'
-                  : trace.distance_meters <= trace.notify_radius_meters
+                trace.distance_meters <= trace.notify_radius_meters
                   ? 'active'
                   : 'undiscovered'
               }
