@@ -64,44 +64,28 @@ function RedactionBar({
   stage: TraceStage;
 }) {
   const revealed = stageGte(stage, revealAt);
-  const scaleX = useRef(new Animated.Value(revealed ? 0 : 1)).current;
-  const opacity = useRef(new Animated.Value(revealed ? 0 : 1)).current;
+  const revealAnim = useRef(new Animated.Value(revealed ? 1 : 0)).current;
 
   useEffect(() => {
-    if (revealed) {
-      Animated.parallel([
-        Animated.timing(scaleX, { toValue: 0, duration: 500, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 0, duration: 400, useNativeDriver: true }),
-      ]).start();
-    } else {
-      Animated.parallel([
-        Animated.timing(scaleX, { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-      ]).start();
-    }
-  }, [revealed]);
-
-  // Show text with low opacity when hidden (readable but clearly locked)
-  const textOpacity = useRef(new Animated.Value(revealed ? 1 : 0.15)).current;
-  useEffect(() => {
-    Animated.timing(textOpacity, {
-      toValue: revealed ? 1 : 0.15,
-      duration: 400,
-      useNativeDriver: true,
+    Animated.timing(revealAnim, {
+      toValue: revealed ? 1 : 0,
+      duration: 600,
+      useNativeDriver: false,
     }).start();
   }, [revealed]);
 
+  // Replace hidden text with █ blocks — same length, clearly classified
+  const blocks = content.replace(/[^\s]/g, '█');
+
   return (
     <View style={styles.redactionWrapper}>
-      <Animated.Text style={[styles.clueRevealedText, { opacity: textOpacity }]}>
-        {content}
+      <Animated.Text style={[
+        styles.clueRevealedText,
+        { opacity: revealAnim },
+        !revealed && styles.clueHidden,
+      ]}>
+        {revealed ? content : blocks}
       </Animated.Text>
-      {/* Lock icon overlay when hidden */}
-      {!revealed && (
-        <Animated.View style={[styles.lockOverlay, { opacity }]}>
-          <Text style={styles.lockIcon}>·····</Text>
-        </Animated.View>
-      )}
     </View>
   );
 }
@@ -410,17 +394,10 @@ const styles = StyleSheet.create({
     position: 'relative',
     justifyContent: 'center',
   },
-  lockOverlay: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lockIcon: {
-    color: COLORS.redaction,
-    fontSize: 10,
-    letterSpacing: 4,
-    opacity: 0.4,
+  clueHidden: {
+    color: COLORS.amber,
+    opacity: 0.7,
+    letterSpacing: 1,
   },
   footer: {
     flexDirection: 'row',
