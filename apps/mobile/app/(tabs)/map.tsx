@@ -132,8 +132,8 @@ export default function MapScreen() {
       }, { onConflict: 'trace_id,user_id' });
     }
 
+    Animated.timing(slideAnim, { toValue: SCREEN_H, duration: 250, useNativeDriver: true }).start();
     setSolveResult({ selfieUri, startedAt: startedAtRef.current });
-    sheetRef.current?.close();
   }, [activeTrace, location, attemptsLeft]);
 
   const handleContinue = useCallback(() => {
