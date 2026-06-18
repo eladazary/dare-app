@@ -1,5 +1,13 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import Anthropic from "npm:@anthropic-ai/sdk@0.36.3";
+// Anthropic SDK imported lazily — only loaded when LLM_PROVIDER=anthropic
+let _anthropic: { messages: { create: (p: unknown) => Promise<{ content: { type: string; text: string }[] }> } } | null = null;
+async function getAnthropic() {
+  if (!_anthropic) {
+    const { default: Anthropic } = await import("npm:@anthropic-ai/sdk@0.36.3");
+    _anthropic = new Anthropic({ apiKey: LLM_API_KEY }) as typeof _anthropic;
+  }
+  return _anthropic!;
+}
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -35,10 +43,6 @@ const defaults = PROVIDER_DEFAULTS[LLM_PROVIDER] ?? PROVIDER_DEFAULTS.groq;
 const resolvedBaseUrl = LLM_BASE_URL !== "https://api.groq.com/openai/v1" ? LLM_BASE_URL : defaults.base_url;
 const resolvedModel   = LLM_MODEL   !== "llama-3.3-70b-versatile"         ? LLM_MODEL   : defaults.model;
 
-// Anthropic SDK (only initialised when needed)
-const anthropic = LLM_PROVIDER === "anthropic"
-  ? new Anthropic({ apiKey: LLM_API_KEY })
-  : null;
 
 // ─────────────────────────────────────────────
 // Types
@@ -157,7 +161,8 @@ ${ctx ? `הקשר: ${ctx}` : ""}
 // ─────────────────────────────────────────────
 
 async function callLlm(userPrompt: string): Promise<string> {
-  if (LLM_PROVIDER === "anthropic" && anthropic) {
+  if (LLM_PROVIDER === "anthropic") {
+    const anthropic = await getAnthropic();
     const resp = await anthropic.messages.create({
       model: resolvedModel,
       max_tokens: 512,
@@ -267,27 +272,21 @@ Deno.serve(async (req: Request) => {
 
   console.log(`POIs found: ${pois.length}, processing: ${unique.length}`);
 
-  // 2. Generate clues in batches of 5
+  // 2. Generate clues sequentially to stay within edge function memory limits
   const traces: GeneratedTrace[] = [];
-  const BATCH = 5;
 
-  for (let i = 0; i < unique.length; i += BATCH) {
-    const results = await Promise.all(
-      unique.slice(i, i + BATCH).map(async (poi) => {
-        const g = await generateClue(poi);
-        if (!g) return null;
-        const { solve, notify } = RADII[g.difficulty] ?? RADII.medium;
-        return {
-          place_name: poiDisplayName(poi),
-          lat: poi.lat, lng: poi.lon,
-          difficulty: g.difficulty,
-          clue: g.clue, hint: g.hint,
-          solve_radius_meters: solve,
-          notify_radius_meters: notify,
-        } as GeneratedTrace;
-      })
-    );
-    traces.push(...results.filter(Boolean) as GeneratedTrace[]);
+  for (const poi of unique) {
+    const g = await generateClue(poi);
+    if (!g) continue;
+    const { solve, notify } = RADII[g.difficulty] ?? RADII.medium;
+    traces.push({
+      place_name: poiDisplayName(poi),
+      lat: poi.lat, lng: poi.lon,
+      difficulty: g.difficulty,
+      clue: g.clue, hint: g.hint,
+      solve_radius_meters: solve,
+      notify_radius_meters: notify,
+    });
   }
 
   // 3. Dry run — return without inserting
