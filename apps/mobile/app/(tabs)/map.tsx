@@ -136,8 +136,7 @@ export default function MapScreen() {
   }, [slideAnim]);
 
   const handleSubmit = useCallback(() => {
-    // Step 1: user must identify the place by name
-    setShowAnswer(true);
+    setShowCamera(true);
   }, []);
 
   const handleCapture = useCallback(async (selfieUri: string) => {
