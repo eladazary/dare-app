@@ -1,193 +1,273 @@
 #!/usr/bin/env python3
 """
-Generate Hebrew Tracer clues for a city using curated or Overpass POIs.
+Generate Hebrew Tracer clues directly — no edge function needed.
+Calls LLM API directly for full rate limit control.
 
 Usage:
-  python3 scripts/generate-traces.py tel-aviv          # use curated list
-  python3 scripts/generate-traces.py london            # use curated list
-  python3 scripts/generate-traces.py tel-aviv --all    # generate all, not just 10
-  python3 scripts/generate-traces.py <lat> <lng>       # fetch from Overpass
+  python3 scripts/generate-traces.py tel-aviv
+  python3 scripts/generate-traces.py london
+  python3 scripts/generate-traces.py tel-aviv --all     # all places, not just 20
+  python3 scripts/generate-traces.py tel-aviv --dry-run # print clues, don't insert
 
-Files in scripts/places/<city>.json are curated POI lists.
-Add your own by creating scripts/places/mycity.json with the same format.
+Set LLM provider via env var:
+  export LLM_PROVIDER=groq        LLM_API_KEY=gsk_...
+  export LLM_PROVIDER=anthropic   LLM_API_KEY=sk-ant-...
+  export LLM_PROVIDER=openai      LLM_API_KEY=sk-...
 """
 
-import sys
-import os
-import json
-import math
-import time
-import subprocess
-import urllib.parse
+import sys, os, json, time, subprocess, urllib.parse, urllib.request
 
-# ── Config ──────────────────────────────────────────────────────────
-SUPABASE_URL = "https://plecaiybtebebbhoabkw.supabase.co"
-ANON_KEY = (
+# ── Config ────────────────────────────────────────────────────────────
+SUPABASE_URL    = "https://plecaiybtebebbhoabkw.supabase.co"
+ANON_KEY        = (
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
     ".eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsZWNhaXlidGViZWJiaG9hYmt3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3MjI5NTIsImV4cCI6MjA5NzI5ODk1Mn0"
     ".D7VlSYxo0JtlV9u_yi2TU24wP6lT0I_CO8wasMUsWC0"
 )
-PLACES_DIR = os.path.join(os.path.dirname(__file__), "places")
-BATCH_SIZE = 4   # smaller batches = less memory + fewer Groq rate limit issues
+PLACES_DIR      = os.path.join(os.path.dirname(__file__), "places")
+LLM_PROVIDER    = os.environ.get("LLM_PROVIDER", "groq")
+LLM_API_KEY     = os.environ.get("LLM_API_KEY", "")
+DELAY_SECS      = 3   # delay between LLM calls
 
-# ── Helpers ──────────────────────────────────────────────────────────
+PROVIDER_CONFIG = {
+    "groq":      {"url": "https://api.groq.com/openai/v1/chat/completions",        "model": "llama-3.3-70b-versatile"},
+    "anthropic": {"url": "https://api.anthropic.com/v1/messages",                   "model": "claude-haiku-4-5"},
+    "openai":    {"url": "https://api.openai.com/v1/chat/completions",              "model": "gpt-4o-mini"},
+}
 
-def call_edge_function(pois: list, dry_run: bool = False) -> dict:
-    payload = json.dumps({"pois": pois, "dry_run": dry_run}).encode()
+# ── Prompt ────────────────────────────────────────────────────────────
+SYSTEM_PROMPT = """אתה כותב רמזים למשחק רחוב בשם Tracer. שחקנים מקבלים רמז, מבינים לאיזה מקום הוא מתייחס, הולכים לשם ומצלמים.
+
+החוק הראשון: העובדה הידועה ביותר על המקום אסורה לחלוטין ברמז.
+• אבו חסן → אסור לציין "הומוס הכי טוב"
+• כיכר רבין → אסור לציין 1995, רצח, שלום
+• אצטדיון → אסור לציין "הדרבי"
+כתוב מהשכבה השנייה של ידע — ההתנהגות, הכלל, הפרט שמעט יודעים.
+
+מה גורם לרמז להיות טוב? לא תיאור — אלא ההתנהגות של המקום. האופי שלו. הכלל הלא-כתוב.
+
+דוגמה מושלמת:
+"אני פתוחה כל בוקר עד שנגמר האוכל. אף פעם לא אמרתי לאף אחד באיזו שעה זה קורה. מי שמכיר יודע לבוא מוקדם. מי שלא — יגיע ולא יבין למה הדלת סגורה באמצע היום."
+
+חוקים:
+1. לא לציין שם, רחוב, כתובת
+2. גוף ראשון — המקום מדבר
+3. 2-3 משפטים קצרים וחדים
+4. ישראלי שמכיר תל אביב צריך לחשוב לפחות 30 שניות
+5. עברית בלבד
+
+החזר JSON בלבד:
+{
+  "clue": "הרמז",
+  "hint": "רמז עזר קצר וישיר יותר",
+  "difficulty": "easy"
+}"""
+
+# ── LLM call ──────────────────────────────────────────────────────────
+
+def call_llm(place: dict) -> dict | None:
+    name    = place["name"]
+    ctx     = place.get("description", "")
+    quirk   = place.get("quirk", "")
+    ptype   = place.get("type", "מקום")
+
+    user_msg = f"""כתוב רמז בעברית למקום הזה. הרמז חייב להיות קשה.
+
+שם המקום (אסור לציין): {name}
+{f"הקשר: {ctx}" if ctx else ""}
+{f"""
+⭐ הלב של הרמז — בנה אותו סביב הפרט הזה בלבד:
+"{quirk}"
+""" if quirk else ""}
+
+חוקים: לא לציין שם. גוף ראשון. 2-3 משפטים. קשה לישראלי."""
+
+    cfg = PROVIDER_CONFIG.get(LLM_PROVIDER, PROVIDER_CONFIG["groq"])
+
+    if LLM_PROVIDER == "anthropic":
+        payload = {
+            "model": cfg["model"], "max_tokens": 512,
+            "system": SYSTEM_PROMPT,
+            "messages": [{"role": "user", "content": user_msg}],
+        }
+        headers = {
+            "x-api-key": LLM_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+    else:
+        payload = {
+            "model": cfg["model"], "max_tokens": 512, "temperature": 0.8,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_msg},
+            ],
+        }
+        headers = {
+            "Authorization": f"Bearer {LLM_API_KEY}",
+            "Content-Type": "application/json",
+        }
+
+    try:
+        req = urllib.request.Request(
+            cfg["url"], data=json.dumps(payload).encode(),
+            headers=headers, method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read())
+
+        if LLM_PROVIDER == "anthropic":
+            text = data["content"][0]["text"]
+        else:
+            text = data["choices"][0]["message"]["content"]
+
+        match = __import__("re").search(r'\{[\s\S]*\}', text)
+        if not match: return None
+        parsed = json.loads(match.group())
+        if not all(k in parsed for k in ("clue", "hint", "difficulty")):
+            return None
+        return parsed
+
+    except Exception as e:
+        print(f"    ✗ LLM error: {e}")
+        return None
+
+
+# ── Supabase insert ───────────────────────────────────────────────────
+
+def insert_trace(place: dict, generated: dict) -> bool:
+    diff_radii = {
+        "easy":      {"solve": 30,  "notify": 100},
+        "medium":    {"solve": 50,  "notify": 300},
+        "hard":      {"solve": 100, "notify": 600},
+        "legendary": {"solve": 200, "notify": 1000},
+    }
+    diff = generated["difficulty"] if generated["difficulty"] in diff_radii else "medium"
+    radii = diff_radii[diff]
+
     result = subprocess.run(
-        ["curl", "-s", "--max-time", "120",
+        ["curl", "-s", "--max-time", "15",
          "-X", "POST",
          f"{SUPABASE_URL}/functions/v1/generate-traces",
          "-H", f"Authorization: Bearer {ANON_KEY}",
          "-H", "Content-Type: application/json",
          "--data-binary", "@-"],
-        input=payload, capture_output=True, timeout=130,
+        input=json.dumps({
+            "pois": [{
+                "name": place["name"],
+                "lat": place["lat"],
+                "lng": place["lng"],
+                "type": place.get("type", "place"),
+                "description": f"CLUE_OVERRIDE:{generated['clue']}|HINT_OVERRIDE:{generated['hint']}",
+            }]
+        }).encode(),
+        capture_output=True, timeout=20,
     )
-    if result.returncode != 0:
-        raise RuntimeError(f"curl error: {result.stderr.decode()}")
-    return json.loads(result.stdout)
+    # Parse result
+    try:
+        data = json.loads(result.stdout)
+        return data.get("generated", 0) > 0
+    except:
+        pass
 
-
-def load_curated(city: str) -> list:
-    path = os.path.join(PLACES_DIR, f"{city}.json")
-    if not os.path.exists(path):
-        available = [f[:-5] for f in os.listdir(PLACES_DIR) if f.endswith(".json")]
-        print(f"✗ No curated list for '{city}'.")
-        print(f"  Available: {', '.join(available)}")
-        print(f"  Or pass lat lng to fetch from Overpass.")
-        sys.exit(1)
-    with open(path) as f:
-        return json.load(f)
-
-
-def fetch_overpass(lat: float, lng: float, radius: int) -> list:
-    print(f"→ Fetching POIs from Overpass ({lat}, {lng}, {radius}m)...")
-    query = (
-        f"[out:json][timeout:20];"
-        f"("
-        f'node["amenity"="bar"]["name"](around:{radius},{lat},{lng});'
-        f'node["amenity"="pub"]["name"](around:{radius},{lat},{lng});'
-        f'node["amenity"="nightclub"]["name"](around:{radius},{lat},{lng});'
-        f'node["amenity"="marketplace"]["name"](around:{radius},{lat},{lng});'
-        f'node["tourism"="artwork"](around:{radius},{lat},{lng});'
-        f'node["tourism"="viewpoint"]["name"](around:{radius},{lat},{lng});'
-        f'node["amenity"="theatre"]["name"](around:{radius},{lat},{lng});'
-        f'node["amenity"="arts_centre"]["name"](around:{radius},{lat},{lng});'
-        f'node["shop"="bakery"]["name"](around:{radius},{lat},{lng});'
-        f'node["natural"="beach"]["name"](around:{radius},{lat},{lng});'
-        f'node["leisure"="park"]["name"](around:{radius},{lat},{lng});'
-        f");out body;"
+    # Fallback: insert via seed_single_trace RPC
+    rpc_result = subprocess.run(
+        ["curl", "-s", "--max-time", "15",
+         "-X", "POST",
+         f"{SUPABASE_URL}/rest/v1/rpc/seed_single_trace",
+         "-H", f"apikey: {ANON_KEY}",
+         "-H", f"Authorization: Bearer {ANON_KEY}",
+         "-H", "Content-Type: application/json",
+         "-d", json.dumps({
+             "p_arena_id": None,
+             "p_lat": place["lat"],
+             "p_lng": place["lng"],
+             "p_place_name": place["name"],
+             "p_clue": generated["clue"],
+             "p_hint": generated["hint"],
+             "p_difficulty": diff,
+             "p_solve_radius": radii["solve"],
+             "p_notify_radius": radii["notify"],
+         })],
+        capture_output=True, timeout=20,
     )
-    encoded = urllib.parse.quote(query, safe="()")
-    mirrors = [
-        "https://overpass-api.de/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter",
-    ]
-    for mirror in mirrors:
-        try:
-            r = subprocess.run(
-                ["curl", "-s", "--max-time", "25",
-                 "-A", "TracerApp/1.0 (city exploration game)",
-                 "-H", "Accept: application/json",
-                 f"{mirror}?data={encoded}"],
-                capture_output=True, text=True, timeout=30,
-            )
-            if not r.stdout.strip() or r.stdout.strip().startswith("<"):
-                print(f"  ✗ {mirror}: blocked or empty")
-                continue
-            data = json.loads(r.stdout)
-            elements = data.get("elements", [])
-            seen, pois = set(), []
-            for e in elements:
-                tags = e.get("tags", {})
-                name = tags.get("name") or tags.get("name:en")
-                if not name or name in seen:
-                    continue
-                seen.add(name)
-                pois.append({
-                    "name": name, "lat": e["lat"], "lng": e["lon"],
-                    "type": (tags.get("amenity") or tags.get("tourism") or
-                             tags.get("shop") or tags.get("natural") or "place"),
-                    "description": tags.get("description", ""),
-                })
-            print(f"  ✓ {mirror} → {len(pois)} POIs")
-            return pois
-        except Exception as ex:
-            print(f"  ✗ {mirror}: {ex}")
-    print("✗ Overpass unavailable. Create a curated list in scripts/places/<city>.json")
-    sys.exit(1)
+    return rpc_result.returncode == 0
 
-# ── Main ─────────────────────────────────────────────────────────────
 
-args = [a for a in sys.argv[1:] if not a.startswith("--")]
+# ── Existing names ────────────────────────────────────────────────────
+
+def get_existing_names() -> set:
+    try:
+        result = subprocess.run(
+            ["curl", "-s", "--max-time", "10",
+             f"{SUPABASE_URL}/rest/v1/traces?select=place_name",
+             "-H", f"apikey: {ANON_KEY}"],
+            capture_output=True, text=True, timeout=15,
+        )
+        return {r["place_name"] for r in json.loads(result.stdout)}
+    except:
+        return set()
+
+
+# ── Main ──────────────────────────────────────────────────────────────
+
+args  = [a for a in sys.argv[1:] if not a.startswith("--")]
 flags = [a for a in sys.argv[1:] if a.startswith("--")]
-do_all = "--all" in flags
+do_all  = "--all"  in flags
 dry_run = "--dry-run" in flags
 
 if not args:
     print(__doc__)
     sys.exit(0)
 
-# Determine POI source
-try:
-    lat, lng = float(args[0]), float(args[1])
-    radius = int(args[2]) if len(args) > 2 else 2000
-    pois = fetch_overpass(lat, lng, radius)
-    city_label = f"{lat},{lng}"
-except (ValueError, IndexError):
-    city = args[0].lower().replace(" ", "-")
-    pois = load_curated(city)
-    city_label = city
-    print(f"→ Loaded {len(pois)} curated POIs for {city_label}")
+city   = args[0].lower().replace(" ", "-")
+path   = os.path.join(PLACES_DIR, f"{city}.json")
+if not os.path.exists(path):
+    available = [f[:-5] for f in os.listdir(PLACES_DIR) if f.endswith(".json")]
+    print(f"✗ No list for '{city}'. Available: {', '.join(available)}")
+    sys.exit(1)
 
-limit = len(pois) if do_all else min(len(pois), 20)
-pois = pois[:limit]
+with open(path) as f:
+    all_pois = json.load(f)
 
-# Skip places already in DB
-existing_result = subprocess.run(
-    ["curl", "-s",
-     f"{SUPABASE_URL}/rest/v1/traces?select=place_name",
-     "-H", f"apikey: {ANON_KEY}"],
-    capture_output=True, text=True, timeout=10,
-)
-try:
-    existing_names = {r["place_name"] for r in json.loads(existing_result.stdout)}
-    before = len(pois)
-    pois = [p for p in pois if p["name"] not in existing_names]
-    if before != len(pois):
-        print(f"  ↳ Skipping {before - len(pois)} already generated")
-except Exception:
-    pass  # if check fails, just proceed
+limit = len(all_pois) if do_all else min(len(all_pois), 20)
+pois  = all_pois[:limit]
 
-print(f"→ Generating clues for {len(pois)} places...")
+# Skip already generated
+existing = get_existing_names()
+before   = len(pois)
+pois     = [p for p in pois if p["name"] not in existing]
+if before != len(pois):
+    print(f"  ↳ Skipping {before - len(pois)} already in DB")
 
-# Process in batches
-total_generated = 0
-total_errors = []
+print(f"→ [{LLM_PROVIDER}] Generating {len(pois)} clues for {city}...\n")
 
-for i in range(0, len(pois), BATCH_SIZE):
-    batch = pois[i:i + BATCH_SIZE]
-    batch_num = i // BATCH_SIZE + 1
-    total_batches = math.ceil(len(pois) / BATCH_SIZE)
-    print(f"  Batch {batch_num}/{total_batches}: {[p['name'] for p in batch]}")
-    try:
-        result = call_edge_function(batch, dry_run=dry_run)
-        generated = result.get("generated", 0)
-        errors = result.get("errors", [])
-        total_generated += generated
-        total_errors.extend(errors)
-        print(f"  ✓ {generated}/{len(batch)} clues generated")
-        if dry_run and result.get("traces"):
-            for t in result["traces"]:
-                print(f"    [{t['difficulty'].upper()}] {t['place_name']}")
-                print(f"    {t['clue'][:80]}...")
-    except Exception as ex:
-        print(f"  ✗ Batch failed: {ex}")
-    if i + BATCH_SIZE < len(pois):
-        time.sleep(20)  # Groq free tier: 6000 tokens/min, ~550 per trace
+total_ok = 0
+total_fail = 0
 
-print(f"\n✓ Done! {total_generated} traces added to DB for {city_label}.")
-if total_errors:
-    print(f"  {len(total_errors)} errors:")
-    for e in total_errors[:5]:
-        print(f"    - {e}")
+for i, place in enumerate(pois, 1):
+    print(f"  [{i}/{len(pois)}] {place['name']}", end=" ", flush=True)
+    generated = call_llm(place)
+
+    if not generated:
+        print("✗ failed")
+        total_fail += 1
+        time.sleep(DELAY_SECS)
+        continue
+
+    if dry_run:
+        print(f"\n    [{generated['difficulty'].upper()}] {generated['clue'][:80]}...")
+        total_ok += 1
+    else:
+        ok = insert_trace(place, generated)
+        if ok:
+            print(f"✓ [{generated['difficulty'].upper()}]")
+            total_ok += 1
+        else:
+            print("✗ insert failed")
+            total_fail += 1
+
+    if i < len(pois):
+        time.sleep(DELAY_SECS)
+
+print(f"\n✓ Done — {total_ok} generated, {total_fail} failed.")
