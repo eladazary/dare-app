@@ -23,6 +23,7 @@ import SelfieCapture from '@/components/SelfieCapture';
 import SolveReveal from '@/components/SolveReveal';
 import TauntModal from '@/components/TauntModal';
 import RescueModal from '@/components/RescueModal';
+import ExtraAttemptsModal from '@/components/ExtraAttemptsModal';
 import { useRescueStore } from '@/stores/rescueStore';
 import { useLocation, useNearbyTraces, useGhostTrails, type NearbyTrace } from '@/hooks/useTraces';
 import { supabase } from '@/lib/supabase';
@@ -87,6 +88,7 @@ export default function MapScreen() {
   const [showCamera, setShowCamera] = useState(false);
   const [solveResult, setSolveResult] = useState<{ selfieUri: string; startedAt: number } | null>(null);
   const [showTaunt, setShowTaunt] = useState(false);
+  const [showExtraAttempts, setShowExtraAttempts] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const { pendingRescue, setPendingRescue } = useRescueStore();
   const startedAtRef = useRef<number>(0);
@@ -121,6 +123,7 @@ export default function MapScreen() {
     if (distNow > activeTrace.solve_radius_meters) {
       const newLeft = Math.max(0, attemptsLeft - 1);
       setAttemptsLeft(newLeft);
+      if (newLeft === 0) setShowExtraAttempts(true);
       // Last attempt used — request rescue from followers
       if (newLeft === 1) {
         const { data: { user } } = await supabase.auth.getUser();
@@ -330,6 +333,23 @@ export default function MapScreen() {
           timeSeconds={Math.round((Date.now() - solveResult.startedAt) / 1000)}
           onTaunt={() => setShowTaunt(true)}
           onContinue={handleContinue}
+        />
+      )}
+
+      {/* Extra attempts purchase */}
+      {activeTrace && (
+        <ExtraAttemptsModal
+          visible={showExtraAttempts}
+          traceId={activeTrace.id}
+          traceName={activeTrace.place_name ?? 'Unknown trace'}
+          onPurchased={() => {
+            setShowExtraAttempts(false);
+            setAttemptsLeft(3);
+          }}
+          onClose={() => {
+            setShowExtraAttempts(false);
+            closeTrace();
+          }}
         />
       )}
 

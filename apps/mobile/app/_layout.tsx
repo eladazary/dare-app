@@ -120,14 +120,21 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const inOnboarding = segments[0] === 'onboarding';
-    const { preview } = useAuthStore.getState();
 
     if (session === undefined) return;
 
     if (!session && !inOnboarding) {
       router.replace('/onboarding');
     } else if (session && inOnboarding) {
-      router.replace('/(tabs)');
+      // Check if user still has a generated username (starts with tracer_)
+      supabase.from('users').select('username').eq('auth_id', session.user.id)
+        .single().then(({ data }) => {
+          if (data?.username?.startsWith('tracer_')) {
+            router.replace('/onboarding/username');
+          } else {
+            router.replace('/(tabs)');
+          }
+        });
     }
   }, [session, segments, router]);
 
@@ -165,6 +172,7 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="onboarding" options={{ headerShown: false }} />
             <Stack.Screen name="auth" options={{ headerShown: false }} />
+            <Stack.Screen name="onboarding/username" options={{ headerShown: false }} />
           </Stack>
         </AuthGate>
       </QueryClientProvider>

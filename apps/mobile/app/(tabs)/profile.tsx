@@ -6,12 +6,14 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants/colors';
 import { FONTS } from '@/constants/typography';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
+import ReferralCard from '@/components/ReferralCard';
 
 type Profile = {
   username: string;
@@ -197,6 +199,9 @@ export default function ProfileScreen() {
             ))}
           </View>
         </View>
+
+        {/* Referral */}
+        {session && <ReferralCard />}
 
       </ScrollView>
     </SafeAreaView>
