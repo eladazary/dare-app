@@ -18,6 +18,7 @@ const SCREEN_H = Dimensions.get('window').height;
 import { COLORS } from '@/constants/colors';
 import { FONTS } from '@/constants/typography';
 import TraceCard, { parseClue, formatDistance, type TraceStage } from '@/components/TraceCard';
+// parseClue now strips markup and returns plain string
 import TracePin from '@/components/TracePin';
 import SelfieCapture from '@/components/SelfieCapture';
 import SolveReveal from '@/components/SolveReveal';
@@ -475,7 +476,7 @@ export default function MapScreen() {
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetContent}>
               <TraceCard
                 id={activeTrace.id}
-                segments={parseClue(activeTrace.clue)}
+                clue={parseClue(activeTrace.clue)}
                 difficulty={activeTrace.difficulty as any}
                 attemptsLeft={attemptsLeft}
                 maxAttempts={activeTrace.max_attempts}
