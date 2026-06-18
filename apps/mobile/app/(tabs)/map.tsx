@@ -24,7 +24,7 @@ import SolveReveal from '@/components/SolveReveal';
 import TauntModal from '@/components/TauntModal';
 import RescueModal from '@/components/RescueModal';
 import { useRescueStore } from '@/stores/rescueStore';
-import { useLocation, useNearbyTraces, type NearbyTrace } from '@/hooks/useTraces';
+import { useLocation, useNearbyTraces, useGhostTrails, type NearbyTrace } from '@/hooks/useTraces';
 import { supabase } from '@/lib/supabase';
 
 // ─────────────────────────────────────────────
@@ -80,6 +80,7 @@ export default function MapScreen() {
 
   const { location, error: locationError, granted } = useLocation();
   const { data: traces = [], isLoading, refetch } = useNearbyTraces(location);
+  const { data: ghostTrails = [] } = useGhostTrails(location);
 
   const [activeTrace, setActiveTrace] = useState<NearbyTrace | null>(null);
   const [attemptsLeft, setAttemptsLeft] = useState(3);
@@ -236,6 +237,22 @@ export default function MapScreen() {
               }
               distanceMeters={Math.round(trace.distance_meters)}
             />
+          </Marker>
+        ))}
+
+        {/* Ghost trail pins — blurred friend activity */}
+        {ghostTrails.map((ghost) => (
+          <Marker
+            key={`ghost-${ghost.id}`}
+            coordinate={{ latitude: ghost.lat, longitude: ghost.lng }}
+            onPress={() => {
+              const sourceTrace = traces.find(t => t.id === ghost.trace_id);
+              if (sourceTrace) openTrace(sourceTrace);
+            }}
+            anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={false}
+          >
+            <TracePin state="ghost" />
           </Marker>
         ))}
       </MapView>

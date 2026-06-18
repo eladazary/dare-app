@@ -76,7 +76,37 @@ export function useNearbyTraces(location: UserLocation | null) {
       return (data ?? []) as NearbyTrace[];
     },
     enabled: !!location,
-    refetchInterval: 30_000, // re-check every 30s
+    refetchInterval: 30_000,
     staleTime: 20_000,
+  });
+}
+
+export type GhostTrail = {
+  id: string;
+  trace_id: string;
+  lat: number;
+  lng: number;
+};
+
+export function useGhostTrails(location: UserLocation | null) {
+  return useQuery({
+    queryKey: ['ghost-trails'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('ghost_trails')
+        .select('id, trace_id, approx_location')
+        .gt('expires_at', new Date().toISOString())
+        .limit(50);
+      if (error) return [];
+      return (data ?? []).map((g: any) => ({
+        id: g.id,
+        trace_id: g.trace_id,
+        lat: g.approx_location?.coordinates?.[1] ?? 0,
+        lng: g.approx_location?.coordinates?.[0] ?? 0,
+      })) as GhostTrail[];
+    },
+    enabled: !!location,
+    refetchInterval: 60_000,
+    staleTime: 45_000,
   });
 }
