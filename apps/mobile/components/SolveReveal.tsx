@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, Animated, Share } from 'react-native';
 import { COLORS } from '@/constants/colors';
 import { FONTS } from '@/constants/typography';
 
@@ -79,6 +79,15 @@ export default function SolveReveal({ placeName, difficulty, selfieUri, timeSeco
           <TouchableOpacity style={styles.tauntBtn} onPress={onTaunt}>
             <Text style={styles.tauntBtnText}>⚔ Taunt a friend</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.shareBtn}
+            onPress={() => Share.share({
+              message: `I just cracked "${placeName}" in ${formatTime(timeSeconds)} on Tracer.\n\nThe world leaves traces. Find yours.\nruntracer.app`,
+              title: 'Tracer',
+            })}
+          >
+            <Text style={styles.shareBtnText}>↗ Share solve</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={onContinue}>
             <Text style={styles.continueText}>Continue →</Text>
           </TouchableOpacity>
@@ -133,5 +142,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28, paddingVertical: 14, borderRadius: 4,
   },
   tauntBtnText: { fontFamily: FONTS.monoBold, fontSize: 13, color: COLORS.ghost, letterSpacing: 1.5 },
+  shareBtn: {
+    borderWidth: 1, borderColor: COLORS.concrete,
+    paddingHorizontal: 28, paddingVertical: 14, borderRadius: 4,
+  },
+  shareBtnText: { fontFamily: FONTS.monoBold, fontSize: 13, color: COLORS.concrete, letterSpacing: 1.5 },
   continueText: { fontFamily: FONTS.mono, fontSize: 12, color: COLORS.concrete, letterSpacing: 2 },
 });

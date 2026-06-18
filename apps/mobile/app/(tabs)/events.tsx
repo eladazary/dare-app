@@ -1,523 +1,232 @@
 import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
+  View, Text, ScrollView, TouchableOpacity,
+  StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
+import { useQuery } from '@tanstack/react-query';
 import { COLORS } from '@/constants/colors';
 import { FONTS } from '@/constants/typography';
+import { supabase } from '@/lib/supabase';
 
-const MOCK_DUEL = {
-  myUsername: '@wanderer47',
-  opponentUsername: '@city_hawk',
-  opponentSubmitted: true,
-  votesMe: 34,
-  votesOpponent: 21,
-  totalVotes: 55,
-  voteEndsMinutes: 12,
-  voteEndsSeconds: 44,
+type Tab = 'leaderboard' | 'bounties';
+
+type LeaderEntry = {
+  user_id: string;
+  username: string;
+  solve_count: number;
+  rank: number;
 };
 
-const MOCK_CHAMPIONSHIP = {
-  myCity: 'TEL AVIV',
-  myCityScore: 2450,
-  challengerCity: 'LONDON',
-  challengerCityScore: 2180,
-  playerCount: 142,
-  endsHours: 14,
-  endsMinutes: 32,
+type Bounty = {
+  id: string;
+  xp_stake: number;
+  expires_at: string;
+  traces: { place_name: string; difficulty: string } | null;
+  posted_by_user: { username: string } | null;
 };
 
-const MOCK_UPCOMING = {
-  registrantCount: 47,
+function useLeaderboard() {
+  return useQuery({
+    queryKey: ['leaderboard'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_zone_leaderboard', { p_limit: 20 });
+      if (error) throw error;
+      return (data ?? []) as LeaderEntry[];
+    },
+    staleTime: 60_000,
+  });
+}
+
+function useBounties() {
+  return useQuery({
+    queryKey: ['bounties'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('bounties')
+        .select(`
+          id, xp_stake, expires_at,
+          traces ( place_name, difficulty ),
+          users!bounties_posted_by_fkey ( username )
+        `)
+        .eq('status', 'active')
+        .order('xp_stake', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return (data ?? []) as Bounty[];
+    },
+    staleTime: 30_000,
+  });
+}
+
+const DIFF_COLOR: Record<string, string> = {
+  easy: COLORS.green,
+  medium: COLORS.amber,
+  hard: COLORS.classified,
+  legendary: COLORS.purple,
 };
 
-const MOCK_RESULTS = {
-  winnerCity: 'Tel Aviv',
-  winnerScore: 3420,
-  loserScore: 2890,
-  myRank: 12,
-  totalPlayers: 47,
-  myXp: 350,
-  winners: [
-    { username: '@dawnchaser', medal: '🥇' },
-    { username: '@rooftop_raj', medal: '🥈' },
-    { username: '@lensflare_t', medal: '🥉' },
-  ],
-  myWins: 3,
-  myLosses: 1,
-};
+function timeUntil(iso: string) {
+  const ms = new Date(iso).getTime() - Date.now();
+  if (ms <= 0) return 'expired';
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
 
-export default function EventsScreen() {
-  const [activeTab, setActiveTab] = useState<'live' | 'upcoming' | 'debrief'>('live');
-
-  const myVotePct =
-    MOCK_DUEL.totalVotes > 0
-      ? (MOCK_DUEL.votesMe / MOCK_DUEL.totalVotes) * 100
-      : 50;
-
-  const myChampionPct =
-    MOCK_CHAMPIONSHIP.myCityScore + MOCK_CHAMPIONSHIP.challengerCityScore > 0
-      ? (MOCK_CHAMPIONSHIP.myCityScore /
-          (MOCK_CHAMPIONSHIP.myCityScore + MOCK_CHAMPIONSHIP.challengerCityScore)) *
-        100
-      : 50;
-
-  const cityDiff = MOCK_CHAMPIONSHIP.myCityScore - MOCK_CHAMPIONSHIP.challengerCityScore;
-  const cityWinning = cityDiff > 0;
+export default function ArenaScreen() {
+  const [tab, setTab] = useState<Tab>('leaderboard');
+  const { data: leaders = [], isLoading: loadingL } = useLeaderboard();
+  const { data: bounties = [], isLoading: loadingB } = useBounties();
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerLabel}>ARENA</Text>
-          <Text style={styles.headerTitle}>Arena</Text>
-        </View>
+      <View style={styles.header}>
+        <Text style={styles.headerLabel}>ARENA</Text>
+        <Text style={styles.headerTitle}>Compete</Text>
+      </View>
 
-        {/* Section Tabs */}
-        <View style={styles.tabs}>
-          {(['live', 'upcoming', 'debrief'] as const).map((tab) => (
-            <TouchableOpacity
-              key={tab}
-              style={styles.tab}
-              onPress={() => setActiveTab(tab as 'live' | 'upcoming' | 'debrief')}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-                {tab.toUpperCase()}
-              </Text>
-              {activeTab === tab && <View style={styles.tabUnderline} />}
-            </TouchableOpacity>
-          ))}
-        </View>
+      {/* Tabs */}
+      <View style={styles.tabs}>
+        {(['leaderboard', 'bounties'] as Tab[]).map((t) => (
+          <TouchableOpacity key={t} style={styles.tab} onPress={() => setTab(t)}>
+            <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
+              {t === 'leaderboard' ? 'LEADERBOARD' : 'BOUNTY BOARD'}
+            </Text>
+            {tab === t && <View style={styles.tabUnderline} />}
+          </TouchableOpacity>
+        ))}
+      </View>
 
-        {/* ── LIVE ── */}
-        {activeTab === 'live' && (
-          <View>
-            {/* Active Duel Card */}
-            <View style={styles.card}>
-              <Text style={styles.cardLabel}>⚔️ HEAD TO HEAD</Text>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
 
-              <View style={styles.duelRow}>
-                <View style={styles.duelSide}>
-                  <View style={styles.duelPhoto}>
-                    <Text style={styles.duelPhotoEmoji}>📸</Text>
-                  </View>
-                  <Text style={styles.duelUsername}>{MOCK_DUEL.myUsername}</Text>
-                </View>
-
-                <Text style={styles.vsText}>VS</Text>
-
-                <View style={styles.duelSide}>
-                  <View style={styles.duelPhoto}>
-                    <Text style={styles.duelPhotoEmoji}>
-                      {MOCK_DUEL.opponentSubmitted ? '📸' : '⏳ Waiting'}
-                    </Text>
-                  </View>
-                  <Text style={styles.duelUsername}>{MOCK_DUEL.opponentUsername}</Text>
-                </View>
-              </View>
-
-              {/* Vote bar */}
-              <View style={styles.voteBarOuter}>
-                <View style={[styles.voteBarAmber, { width: `${myVotePct}%` as any }]} />
-                <View style={[styles.voteBarRed, { width: `${100 - myVotePct}%` as any }]} />
-              </View>
-              <Text style={styles.voteCount}>
-                {MOCK_DUEL.votesMe} votes for you · {MOCK_DUEL.votesOpponent} votes for them
-              </Text>
-              <Text style={styles.voteEnds}>
-                Vote ends in {MOCK_DUEL.voteEndsMinutes}m {MOCK_DUEL.voteEndsSeconds}s
-              </Text>
+        {/* ── Leaderboard ── */}
+        {tab === 'leaderboard' && (
+          loadingL ? <ActivityIndicator color={COLORS.amber} style={styles.loader} /> :
+          leaders.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>No solves yet.</Text>
+              <Text style={styles.emptySub}>Be the first to crack a trace.</Text>
             </View>
-
-            {/* City Championship Card */}
-            <View style={styles.card}>
-              <Text style={styles.cardLabel}>🏙️ CITY WAR</Text>
-
-              <View style={styles.championshipScoreRow}>
-                <View style={styles.championshipSide}>
-                  <Text style={styles.championshipCityName}>{MOCK_CHAMPIONSHIP.myCity}</Text>
-                  <Text style={styles.championshipScore}>
-                    {MOCK_CHAMPIONSHIP.myCityScore.toLocaleString()}
+          ) : leaders.map((entry) => (
+            <View key={entry.user_id} style={[styles.leaderRow, entry.rank === 1 && styles.leaderRowFirst]}>
+              <Text style={[styles.leaderRank, entry.rank <= 3 && { color: COLORS.amber }]}>
+                #{entry.rank}
+              </Text>
+              <View style={styles.leaderLeft}>
+                <View style={styles.leaderAvatar}>
+                  <Text style={styles.leaderAvatarText}>
+                    {entry.username[0]?.toUpperCase() ?? 'T'}
                   </Text>
                 </View>
-
-                <Text style={styles.vsText}>VS</Text>
-
-                <View style={[styles.championshipSide, styles.alignRight]}>
-                  <Text style={[styles.championshipCityName, styles.alignRight]}>
-                    {MOCK_CHAMPIONSHIP.challengerCity}
-                  </Text>
-                  <Text style={[styles.championshipScore, styles.alignRight]}>
-                    {MOCK_CHAMPIONSHIP.challengerCityScore.toLocaleString()}
-                  </Text>
-                </View>
+                <Text style={styles.leaderName}>{entry.username}</Text>
               </View>
-
-              <View style={styles.voteBarOuter}>
-                <View style={[styles.voteBarAmber, { width: `${myChampionPct}%` as any }]} />
-                <View style={[styles.voteBarRed, { width: `${100 - myChampionPct}%` as any }]} />
+              <View style={styles.leaderRight}>
+                <Text style={styles.leaderCount}>{entry.solve_count}</Text>
+                <Text style={styles.leaderCountLabel}>traces</Text>
               </View>
-
-              <Text style={[styles.cityStatus, { color: cityWinning ? COLORS.green : COLORS.red }]}>
-                {cityWinning
-                  ? `Your city is ahead by ${cityDiff} points`
-                  : `Your city is losing by ${Math.abs(cityDiff)} points`}
-              </Text>
-              <Text style={styles.championshipMeta}>{MOCK_CHAMPIONSHIP.playerCount} players active</Text>
-              <Text style={styles.championshipMeta}>
-                Ends in {MOCK_CHAMPIONSHIP.endsHours}h {MOCK_CHAMPIONSHIP.endsMinutes}m
-              </Text>
             </View>
-          </View>
+          ))
         )}
 
-        {/* ── UPCOMING ── */}
-        {activeTab === 'upcoming' && (
-          <View>
-            <View style={styles.card}>
-              <Text style={styles.cardLabel}>🏆 WEEKEND CITY WAR</Text>
-              <Text style={styles.tournamentName}>Weekend City War — Tel Aviv vs London</Text>
-              <Text style={styles.tournamentDate}>Saturday 10:00am → Sunday midnight</Text>
-              <Text style={styles.tournamentMeta}>{MOCK_UPCOMING.registrantCount} agents enlisted</Text>
-              <Text style={styles.tournamentPrize}>
-                Winner: Critical dare badge + 2000 XP + Legend status
+        {/* ── Bounty Board ── */}
+        {tab === 'bounties' && (
+          loadingB ? <ActivityIndicator color={COLORS.amber} style={styles.loader} /> :
+          bounties.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>No active bounties.</Text>
+              <Text style={styles.emptySub}>Stake XP on an unsolved trace to create one.</Text>
+            </View>
+          ) : bounties.map((bounty) => (
+            <View key={bounty.id} style={styles.bountyCard}>
+              <View style={styles.bountyTop}>
+                <View style={styles.bountyXp}>
+                  <Text style={styles.bountyXpValue}>{bounty.xp_stake}</Text>
+                  <Text style={styles.bountyXpLabel}>XP</Text>
+                </View>
+                <View style={styles.bountyMeta}>
+                  <Text style={styles.bountyDiff} style={[styles.bountyDiff, {
+                    color: DIFF_COLOR[bounty.traces?.difficulty ?? 'easy']
+                  }]}>
+                    {bounty.traces?.difficulty?.toUpperCase() ?? '—'}
+                  </Text>
+                  <Text style={styles.bountyTime}>Expires in {timeUntil(bounty.expires_at)}</Text>
+                </View>
+              </View>
+              <Text style={styles.bountyTraceName} numberOfLines={2}>
+                {bounty.traces?.place_name ?? 'Unknown trace'}
               </Text>
-              <TouchableOpacity style={styles.amberButton} activeOpacity={0.85}>
-                <Text style={styles.amberButtonText}>Enlist →</Text>
+              <Text style={styles.bountyPostedBy}>
+                Posted by {bounty.posted_by_user?.username ?? 'unknown'}
+              </Text>
+              <TouchableOpacity style={styles.bountyBtn}>
+                <Text style={styles.bountyBtnText}>Find it →</Text>
               </TouchableOpacity>
             </View>
-
-            <View style={styles.legendaryCard}>
-              <Text style={styles.legendaryLabel}>⚡ CRITICAL DARE</Text>
-              <Text style={styles.legendaryTitle}>Coming in 3 days</Text>
-              <Text style={styles.legendarySubtitle}>30 minutes. No warning. Be ready.</Text>
-              <Text style={styles.legendaryNote}>You'll get a notification</Text>
-            </View>
-          </View>
+          ))
         )}
 
-        {/* ── DEBRIEF ── */}
-        {activeTab === 'debrief' && (
-          <View>
-            <View style={styles.card}>
-              <Text style={styles.cardLabel}>LAST DEBRIEF</Text>
-              <Text style={styles.resultWinner}>{MOCK_RESULTS.winnerCity} won the war 🏆</Text>
-              <Text style={styles.resultScore}>
-                Final score: {MOCK_RESULTS.winnerScore.toLocaleString()} vs{' '}
-                {MOCK_RESULTS.loserScore.toLocaleString()}
-              </Text>
-              <Text style={styles.resultMine}>
-                #{MOCK_RESULTS.myRank} of {MOCK_RESULTS.totalPlayers} · +{MOCK_RESULTS.myXp} XP earned
-              </Text>
-
-              <View style={styles.podium}>
-                {MOCK_RESULTS.winners.map((w) => (
-                  <View key={w.username} style={styles.podiumEntry}>
-                    <View style={styles.podiumAvatar}>
-                      <Text style={styles.podiumMedal}>{w.medal}</Text>
-                    </View>
-                    <Text style={styles.podiumName}>{w.username}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.card}>
-              <Text style={styles.cardLabel}>⚔️ LAST WEEK'S DUELS</Text>
-              <Text style={styles.duelRecord}>
-                Your record: {MOCK_RESULTS.myWins}W / {MOCK_RESULTS.myLosses}L
-              </Text>
-            </View>
-          </View>
-        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: COLORS.navy,
+  root: { flex: 1, backgroundColor: COLORS.navy },
+  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 },
+  headerLabel: { fontFamily: FONTS.mono, fontSize: 10, color: COLORS.concrete, letterSpacing: 3 },
+  headerTitle: { fontFamily: FONTS.uiExtraBold, fontSize: 26, color: COLORS.ghost, marginTop: 2 },
+  tabs: { flexDirection: 'row', paddingHorizontal: 20, gap: 24, marginBottom: 16, marginTop: 12 },
+  tab: { paddingBottom: 6, position: 'relative' },
+  tabText: { fontFamily: FONTS.monoBold, fontSize: 11, color: COLORS.concrete, letterSpacing: 1.5 },
+  tabTextActive: { color: COLORS.amber },
+  tabUnderline: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 1, backgroundColor: COLORS.amber },
+  content: { paddingHorizontal: 20, paddingBottom: 48 },
+  loader: { marginTop: 48 },
+  empty: { alignItems: 'center', paddingTop: 64, gap: 8 },
+  emptyText: { fontFamily: FONTS.uiBold, fontSize: 16, color: COLORS.ghost },
+  emptySub: { fontFamily: FONTS.mono, fontSize: 12, color: COLORS.concrete, textAlign: 'center', letterSpacing: 0.5 },
+
+  // Leaderboard
+  leaderRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: COLORS.navyMid, borderRadius: 8,
+    padding: 14, marginBottom: 8, gap: 12,
   },
-  scrollContent: {
-    paddingBottom: 40,
+  leaderRowFirst: { borderWidth: 1, borderColor: COLORS.amber },
+  leaderRank: { fontFamily: FONTS.monoBold, fontSize: 14, color: COLORS.concrete, width: 32 },
+  leaderLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  leaderAvatar: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: COLORS.navyLight, alignItems: 'center', justifyContent: 'center',
   },
-  header: {
-    marginHorizontal: 20,
-    marginTop: 8,
-    marginBottom: 16,
+  leaderAvatarText: { fontFamily: FONTS.uiBold, fontSize: 14, color: COLORS.amber },
+  leaderName: { fontFamily: FONTS.uiBold, fontSize: 14, color: COLORS.ghost },
+  leaderRight: { alignItems: 'flex-end' },
+  leaderCount: { fontFamily: FONTS.uiExtraBold, fontSize: 20, color: COLORS.ghost },
+  leaderCountLabel: { fontFamily: FONTS.mono, fontSize: 9, color: COLORS.concrete, letterSpacing: 1 },
+
+  // Bounty
+  bountyCard: {
+    backgroundColor: COLORS.navyMid, borderRadius: 8,
+    padding: 16, marginBottom: 12, gap: 8,
   },
-  headerLabel: {
-    fontFamily: FONTS.ui,
-    fontSize: 11,
-    color: COLORS.concrete,
-    textTransform: 'uppercase',
-    letterSpacing: 3,
+  bountyTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  bountyXp: {
+    backgroundColor: COLORS.navy, borderRadius: 6,
+    paddingHorizontal: 12, paddingVertical: 8, alignItems: 'center',
+    borderWidth: 1, borderColor: COLORS.amber,
   },
-  headerTitle: {
-    fontFamily: FONTS.uiExtraBold,
-    fontSize: 24,
-    color: COLORS.ghost,
-    marginTop: 2,
+  bountyXpValue: { fontFamily: FONTS.uiExtraBold, fontSize: 20, color: COLORS.amber },
+  bountyXpLabel: { fontFamily: FONTS.mono, fontSize: 8, color: COLORS.concrete, letterSpacing: 1 },
+  bountyMeta: { flex: 1, gap: 4 },
+  bountyDiff: { fontFamily: FONTS.monoBold, fontSize: 10, letterSpacing: 1.5 },
+  bountyTime: { fontFamily: FONTS.mono, fontSize: 10, color: COLORS.concrete },
+  bountyTraceName: { fontFamily: FONTS.uiBold, fontSize: 15, color: COLORS.ghost },
+  bountyPostedBy: { fontFamily: FONTS.mono, fontSize: 10, color: COLORS.concrete, letterSpacing: 0.5 },
+  bountyBtn: {
+    backgroundColor: COLORS.amber, borderRadius: 6,
+    paddingVertical: 10, alignItems: 'center', marginTop: 4,
   },
-  tabs: {
-    flexDirection: 'row',
-    marginHorizontal: 20,
-    marginBottom: 16,
-    gap: 20,
-  },
-  tab: {
-    paddingBottom: 6,
-    position: 'relative',
-  },
-  tabText: {
-    fontFamily: FONTS.uiBold,
-    fontSize: 12,
-    color: COLORS.concrete,
-    letterSpacing: 1,
-  },
-  tabTextActive: {
-    color: COLORS.amber,
-  },
-  tabUnderline: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 2,
-    backgroundColor: COLORS.amber,
-    borderRadius: 1,
-  },
-  card: {
-    backgroundColor: COLORS.navyMid,
-    borderRadius: 14,
-    marginHorizontal: 20,
-    marginBottom: 16,
-    padding: 16,
-    gap: 10,
-  },
-  cardLabel: {
-    fontFamily: FONTS.uiBold,
-    fontSize: 10,
-    color: COLORS.amber,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  // Duel
-  duelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  duelSide: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 6,
-  },
-  duelPhoto: {
-    height: 100,
-    width: '100%',
-    backgroundColor: COLORS.navyLight,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  duelPhotoEmoji: {
-    fontSize: 28,
-    textAlign: 'center',
-  },
-  duelUsername: {
-    fontFamily: FONTS.ui,
-    fontSize: 11,
-    color: COLORS.concrete,
-  },
-  vsText: {
-    fontFamily: FONTS.uiExtraBold,
-    fontSize: 12,
-    color: COLORS.ghost,
-  },
-  voteBarOuter: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.concrete,
-    flexDirection: 'row',
-    overflow: 'hidden',
-  },
-  voteBarAmber: {
-    height: 6,
-    backgroundColor: COLORS.amber,
-  },
-  voteBarRed: {
-    height: 6,
-    backgroundColor: COLORS.red,
-  },
-  voteCount: {
-    fontFamily: FONTS.ui,
-    fontSize: 11,
-    color: COLORS.concrete,
-    textAlign: 'center',
-  },
-  voteEnds: {
-    fontFamily: FONTS.uiBold,
-    fontSize: 11,
-    color: COLORS.red,
-    textAlign: 'center',
-  },
-  // Championship
-  championshipScoreRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  championshipSide: {
-    flex: 1,
-    gap: 2,
-  },
-  championshipCityName: {
-    fontFamily: FONTS.uiBold,
-    fontSize: 11,
-    color: COLORS.concrete,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  championshipScore: {
-    fontFamily: FONTS.uiExtraBold,
-    fontSize: 20,
-    color: COLORS.ghost,
-  },
-  alignRight: {
-    textAlign: 'right',
-    alignItems: 'flex-end',
-  },
-  cityStatus: {
-    fontFamily: FONTS.uiBold,
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  championshipMeta: {
-    fontFamily: FONTS.ui,
-    fontSize: 11,
-    color: COLORS.concrete,
-    textAlign: 'center',
-  },
-  // Upcoming
-  tournamentName: {
-    fontFamily: FONTS.uiBold,
-    fontSize: 18,
-    color: COLORS.ghost,
-    lineHeight: 24,
-  },
-  tournamentDate: {
-    fontFamily: FONTS.ui,
-    fontSize: 13,
-    color: COLORS.concrete,
-  },
-  tournamentMeta: {
-    fontFamily: FONTS.ui,
-    fontSize: 12,
-    color: COLORS.concrete,
-  },
-  tournamentPrize: {
-    fontFamily: FONTS.uiBold,
-    fontSize: 13,
-    color: COLORS.amber,
-  },
-  amberButton: {
-    backgroundColor: COLORS.amber,
-    borderRadius: 12,
-    paddingVertical: 13,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  amberButtonText: {
-    fontFamily: FONTS.uiExtraBold,
-    fontSize: 15,
-    color: COLORS.navy,
-  },
-  legendaryCard: {
-    backgroundColor: COLORS.navyLight,
-    borderWidth: 1,
-    borderColor: COLORS.purple,
-    borderRadius: 12,
-    marginHorizontal: 20,
-    marginBottom: 16,
-    padding: 16,
-    gap: 6,
-  },
-  legendaryLabel: {
-    fontFamily: FONTS.uiBold,
-    fontSize: 10,
-    color: COLORS.purple,
-    textTransform: 'uppercase',
-    letterSpacing: 3,
-  },
-  legendaryTitle: {
-    fontFamily: FONTS.uiExtraBold,
-    fontSize: 16,
-    color: COLORS.ghost,
-  },
-  legendarySubtitle: {
-    fontFamily: FONTS.challengeItalic,
-    fontSize: 13,
-    color: COLORS.concrete,
-  },
-  legendaryNote: {
-    fontFamily: FONTS.ui,
-    fontSize: 11,
-    color: COLORS.concrete,
-  },
-  // Results
-  resultWinner: {
-    fontFamily: FONTS.uiExtraBold,
-    fontSize: 20,
-    color: COLORS.ghost,
-  },
-  resultScore: {
-    fontFamily: FONTS.ui,
-    fontSize: 13,
-    color: COLORS.concrete,
-  },
-  resultMine: {
-    fontFamily: FONTS.uiBold,
-    fontSize: 13,
-    color: COLORS.amber,
-  },
-  podium: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 4,
-  },
-  podiumEntry: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  podiumAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.navyLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  podiumMedal: {
-    fontSize: 20,
-  },
-  podiumName: {
-    fontFamily: FONTS.ui,
-    fontSize: 10,
-    color: COLORS.concrete,
-  },
-  duelRecord: {
-    fontFamily: FONTS.uiBold,
-    fontSize: 16,
-    color: COLORS.ghost,
-  },
+  bountyBtnText: { fontFamily: FONTS.uiBold, fontSize: 13, color: COLORS.navy },
 });
