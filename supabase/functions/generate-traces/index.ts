@@ -75,29 +75,32 @@ interface GeneratedTrace {
 // OpenStreetMap Overpass — fetch interesting POIs
 // ─────────────────────────────────────────────
 
-const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+// Try multiple mirrors — Supabase's datacenter IPs can be blocked by some
+const OVERPASS_MIRRORS = [
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+];
 
 async function fetchPois(lat: number, lng: number, radius: number): Promise<OsmPoi[]> {
-  const query = `
-    [out:json][timeout:15];
-    (
-      node["historic"~"monument|memorial|statue|building|ruins|fort|castle|tower"](around:${radius},${lat},${lng});
-      node["tourism"~"viewpoint|museum|artwork|monument|attraction"](around:${radius},${lat},${lng});
-      node["amenity"~"fountain|clock|place_of_worship"](around:${radius},${lat},${lng});
-      node["man_made"~"water_tower|lighthouse|tower|windmill|chimney"](around:${radius},${lat},${lng});
-      node["natural"~"spring|peak|cliff"](around:${radius},${lat},${lng});
-      node["leisure"~"park"](around:${radius},${lat},${lng});
-    );
-    out body;
-  `;
-  const resp = await fetch(OVERPASS_URL, {
-    method: "POST",
-    body: query,
-    headers: { "Content-Type": "text/plain" },
-  });
-  if (!resp.ok) throw new Error(`Overpass ${resp.status}`);
-  const data = await resp.json();
-  return (data.elements ?? []).filter((e: OsmPoi) => e.tags?.name);
+  const query = `[out:json][timeout:20];(node["historic"~"monument|memorial|statue|ruins|fort|castle|tower"](around:${radius},${lat},${lng});node["tourism"~"viewpoint|museum|artwork|monument|attraction"](around:${radius},${lat},${lng});node["amenity"~"fountain|clock|place_of_worship"](around:${radius},${lat},${lng});node["man_made"~"water_tower|lighthouse|tower|windmill"](around:${radius},${lat},${lng});node["natural"~"spring|peak"](around:${radius},${lat},${lng}););out body;`;
+
+  let lastError = "";
+  for (const mirror of OVERPASS_MIRRORS) {
+    try {
+      // GET request with query in URL — most compatible
+      const url = `${mirror}?data=${encodeURIComponent(query)}`;
+      const resp = await fetch(url, {
+        headers: { "Accept": "application/json", "User-Agent": "Tracer/1.0" },
+      });
+      if (!resp.ok) { lastError = `${mirror} → ${resp.status}`; continue; }
+      const data = await resp.json();
+      return (data.elements ?? []).filter((e: OsmPoi) => e.tags?.name);
+    } catch (e) {
+      lastError = `${mirror} → ${String(e)}`;
+    }
+  }
+  throw new Error(`All Overpass mirrors failed. Last: ${lastError}`);
 }
 
 function poiDisplayName(poi: OsmPoi): string {
