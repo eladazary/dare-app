@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { COLORS } from '@/constants/colors';
 import { FONTS } from '@/constants/typography';
+import { formatDistance } from '@/components/TraceCard';
 
 interface Props {
   visible: boolean;
@@ -82,7 +83,7 @@ export default function AnswerModal({
         <View style={styles.sheet}>
           <Text style={styles.label}>IDENTIFY THE LOCATION</Text>
           <Text style={styles.sub}>
-            You're {Math.round(distanceMeters)}m away.{'\n'}
+            You're {formatDistance(distanceMeters)} away.{'\n'}
             Name the exact place to submit proof.
           </Text>
 

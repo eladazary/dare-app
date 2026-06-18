@@ -9,6 +9,17 @@ import {
 import { COLORS } from '@/constants/colors';
 import { FONTS } from '@/constants/typography';
 
+// Below 300m: exact. Above: bucketed so it's a helpful hint, not a spoiler.
+export function formatDistance(meters: number): string {
+  if (meters < 300) return `${Math.round(meters)}m`;
+  if (meters < 600) return '~400m';
+  if (meters < 900) return '~600m';
+  if (meters < 1200) return '~1km';
+  if (meters < 1750) return '~1.5km';
+  if (meters < 2500) return '~2km';
+  return '2km+';
+}
+
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
@@ -145,9 +156,7 @@ export default function TraceCard({
       {distanceMeters != null && !isSolved && (
         <View style={[styles.distanceBadge, stage === 'close' && styles.distanceBadgeClose]}>
           <Text style={[styles.distanceBadgeText, stage === 'close' && styles.distanceBadgeTextClose]}>
-            {distanceMeters < 1000
-              ? `📍 ${Math.round(distanceMeters)} m away`
-              : `📍 ${(distanceMeters / 1000).toFixed(1)} km away`}
+            📍 {formatDistance(distanceMeters)} away
           </Text>
         </View>
       )}
