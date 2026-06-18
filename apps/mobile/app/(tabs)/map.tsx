@@ -248,24 +248,22 @@ export default function MapScreen() {
 
       </SafeAreaView>
 
-      {/* DEV: floating seed button — remove before production */}
-      {!isLoading && traces.length === 0 && (
-        <TouchableOpacity
-          style={styles.devSeedBtn}
-          disabled={seeding}
-          onPress={async () => {
-            setSeeding(true);
-            await seedTracesNearMe(location.lat, location.lng);
-            await refetch();
-            setSeeding(false);
-          }}
-        >
-          {seeding
-            ? <ActivityIndicator color={COLORS.navy} size="small" />
-            : <Text style={styles.devSeedText}>DEV: Seed traces here</Text>
-          }
-        </TouchableOpacity>
-      )}
+      {/* DEV: always-visible seed button — remove before production */}
+      <TouchableOpacity
+        style={styles.devSeedBtn}
+        disabled={seeding}
+        onPress={async () => {
+          setSeeding(true);
+          await seedTracesNearMe(location.lat, location.lng);
+          await refetch();
+          setSeeding(false);
+        }}
+      >
+        {seeding
+          ? <ActivityIndicator color={COLORS.navy} size="small" />
+          : <Text style={styles.devSeedText}>DEV: Seed traces here</Text>
+        }
+      </TouchableOpacity>
 
       {/* Camera overlay */}
       {showCamera && activeTrace && (
@@ -459,16 +457,16 @@ const styles = StyleSheet.create({
   },
   devSeedBtn: {
     position: 'absolute',
-    bottom: 100,
+    top: 160,
     alignSelf: 'center',
-    left: '25%',
-    right: '25%',
+    left: '20%',
+    right: '20%',
     backgroundColor: COLORS.amber,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 4,
     alignItems: 'center',
-    zIndex: 50,
+    zIndex: 999,
   },
   devSeedText: {
     fontFamily: FONTS.monoBold,
