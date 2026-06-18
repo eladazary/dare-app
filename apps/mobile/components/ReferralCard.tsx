@@ -39,9 +39,19 @@ export default function ReferralCard() {
     <View style={styles.card}>
       <Text style={styles.label}>YOUR INVITE CODE</Text>
       <Text style={styles.code}>{code}</Text>
+      <View style={styles.rewardRow}>
+        <View style={styles.rewardItem}>
+          <Text style={styles.rewardValue}>+500</Text>
+          <Text style={styles.rewardLabel}>XP EACH</Text>
+        </View>
+        <View style={styles.rewardDivider} />
+        <View style={styles.rewardItem}>
+          <Text style={styles.rewardValue}>🤝 1</Text>
+          <Text style={styles.rewardLabel}>FREE RESCUE</Text>
+        </View>
+      </View>
       <Text style={styles.sub}>
-        Share this code with a friend.{'\n'}
-        When they sign up, you both get +100 XP and a bonus trace.
+        Share your code — both of you get rewarded the moment they sign up.
       </Text>
       <TouchableOpacity style={styles.btn} onPress={handleShare}>
         <Text style={styles.btnText}>↗ Share invite link</Text>
@@ -64,6 +74,22 @@ const styles = StyleSheet.create({
   code: {
     fontFamily: FONTS.uiExtraBold, fontSize: 32,
     color: COLORS.amber, letterSpacing: 6,
+  },
+  rewardRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: COLORS.navy, borderRadius: 10,
+    padding: 14, gap: 16, width: '100%',
+  },
+  rewardItem: { flex: 1, alignItems: 'center', gap: 2 },
+  rewardValue: {
+    fontFamily: FONTS.uiExtraBold, fontSize: 22, color: COLORS.amber,
+  },
+  rewardLabel: {
+    fontFamily: FONTS.mono, fontSize: 8,
+    color: COLORS.concrete, letterSpacing: 2,
+  },
+  rewardDivider: {
+    width: 1, height: 32, backgroundColor: COLORS.navyLight,
   },
   sub: {
     fontFamily: FONTS.mono, fontSize: 11,

@@ -81,20 +81,27 @@ function RedactionBar({
     }
   }, [revealed]);
 
+  // Show text with low opacity when hidden (readable but clearly locked)
+  const textOpacity = useRef(new Animated.Value(revealed ? 1 : 0.15)).current;
+  useEffect(() => {
+    Animated.timing(textOpacity, {
+      toValue: revealed ? 1 : 0.15,
+      duration: 400,
+      useNativeDriver: true,
+    }).start();
+  }, [revealed]);
+
   return (
     <View style={styles.redactionWrapper}>
-      {/* Underlying text — visible once bar lifts */}
-      <Text style={styles.clueRevealedText}>{content}</Text>
-      {/* The bar itself */}
-      <Animated.View
-        style={[
-          styles.redactionBar,
-          {
-            opacity,
-            transform: [{ scaleX }],
-          },
-        ]}
-      />
+      <Animated.Text style={[styles.clueRevealedText, { opacity: textOpacity }]}>
+        {content}
+      </Animated.Text>
+      {/* Lock icon overlay when hidden */}
+      {!revealed && (
+        <Animated.View style={[styles.lockOverlay, { opacity }]}>
+          <Text style={styles.lockIcon}>·····</Text>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -150,16 +157,20 @@ export default function TraceCard({
         </View>
       )}
 
+      {/* Distance badge — prominent, top of card */}
+      {distanceMeters != null && !isSolved && (
+        <View style={[styles.distanceBadge, stage === 'close' && styles.distanceBadgeClose]}>
+          <Text style={[styles.distanceBadgeText, stage === 'close' && styles.distanceBadgeTextClose]}>
+            {distanceMeters < 1000
+              ? `📍 ${Math.round(distanceMeters)} m away`
+              : `📍 ${(distanceMeters / 1000).toFixed(1)} km away`}
+          </Text>
+        </View>
+      )}
+
       {/* Header row */}
       <View style={styles.headerRow}>
         <Text style={styles.traceId}>TRACE #{id.slice(-4).toUpperCase()}</Text>
-        {distanceMeters != null && (
-          <Text style={styles.distance}>
-            {distanceMeters < 1000
-              ? `${Math.round(distanceMeters)}M AWAY`
-              : `${(distanceMeters / 1000).toFixed(1)}KM`}
-          </Text>
-        )}
       </View>
 
       {/* Difficulty badge */}
@@ -245,6 +256,14 @@ export default function TraceCard({
         )}
       </View>
 
+      {/* Walk closer hint — only when bars are still showing */}
+      {!isSolved && stage === 'locked' && (
+        <Text style={styles.revealHint}>🚶 Walk closer — hidden words will reveal</Text>
+      )}
+      {!isSolved && stage === 'approaching' && (
+        <Text style={styles.revealHint}>🔓 Getting closer — more words revealing soon</Text>
+      )}
+
       {/* Location classified footer */}
       <Text style={styles.locationClassified}>LOCATION CLASSIFIED</Text>
     </View>
@@ -307,6 +326,35 @@ const styles = StyleSheet.create({
     color: COLORS.classified,
     letterSpacing: 1.5,
   },
+  distanceBadge: {
+    backgroundColor: COLORS.redaction,
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+  distanceBadgeClose: {
+    backgroundColor: COLORS.green,
+  },
+  distanceBadgeText: {
+    fontFamily: FONTS.monoBold,
+    fontSize: 12,
+    color: COLORS.cream,
+    letterSpacing: 0.5,
+  },
+  distanceBadgeTextClose: {
+    color: COLORS.navy,
+  },
+  revealHint: {
+    fontFamily: FONTS.mono,
+    fontSize: 10,
+    color: COLORS.redaction,
+    opacity: 0.5,
+    textAlign: 'center',
+    marginTop: 8,
+    letterSpacing: 0.5,
+  },
   difficultyRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -362,15 +410,17 @@ const styles = StyleSheet.create({
     position: 'relative',
     justifyContent: 'center',
   },
-  redactionBar: {
+  lockOverlay: {
     position: 'absolute',
-    top: 4,
-    left: -2,
-    right: -2,
-    bottom: 2,
-    backgroundColor: COLORS.redaction,
-    borderRadius: 2,
-    transformOrigin: 'left',
+    top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lockIcon: {
+    color: COLORS.redaction,
+    fontSize: 10,
+    letterSpacing: 4,
+    opacity: 0.4,
   },
   footer: {
     flexDirection: 'row',
