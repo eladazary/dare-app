@@ -16,9 +16,11 @@ import {
   PlayfairDisplay_400Regular_Italic,
 } from '@expo-google-fonts/playfair-display';
 
+import * as Notifications from 'expo-notifications';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { useRescueStore } from '@/stores/rescueStore';
 
 async function handleAuthDeepLink(url: string) {
   const parsed = Linking.parse(url);
@@ -64,6 +66,24 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const segments = useSegments();
   const { session, setSession } = useAuthStore();
   usePushNotifications();
+  const setPendingRescue = useRescueStore((s) => s.setPendingRescue);
+
+  useEffect(() => {
+    // Handle notification tap when app is open
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as Record<string, any>;
+      if (data?.type === 'rescue_needed' && data?.rescue_id) {
+        setPendingRescue({
+          rescueId: data.rescue_id,
+          traceId: data.trace_id ?? '',
+          traceName: data.trace_name ?? 'Unknown trace',
+          friendUsername: data.friend_name ?? 'A friend',
+          hint: data.hint ?? '',
+        });
+      }
+    });
+    return () => sub.remove();
+  }, [setPendingRescue]);
 
   useEffect(() => {
     // Subscribe to auth state changes.

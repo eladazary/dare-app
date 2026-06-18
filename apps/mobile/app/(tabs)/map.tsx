@@ -22,6 +22,8 @@ import TracePin from '@/components/TracePin';
 import SelfieCapture from '@/components/SelfieCapture';
 import SolveReveal from '@/components/SolveReveal';
 import TauntModal from '@/components/TauntModal';
+import RescueModal from '@/components/RescueModal';
+import { useRescueStore } from '@/stores/rescueStore';
 import { useLocation, useNearbyTraces, type NearbyTrace } from '@/hooks/useTraces';
 import { supabase } from '@/lib/supabase';
 
@@ -85,6 +87,7 @@ export default function MapScreen() {
   const [solveResult, setSolveResult] = useState<{ selfieUri: string; startedAt: number } | null>(null);
   const [showTaunt, setShowTaunt] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const { pendingRescue, setPendingRescue } = useRescueStore();
   const startedAtRef = useRef<number>(0);
 
   const openTrace = useCallback((trace: NearbyTrace) => {
@@ -115,7 +118,25 @@ export default function MapScreen() {
     );
 
     if (distNow > activeTrace.solve_radius_meters) {
-      setAttemptsLeft((n) => Math.max(0, n - 1));
+      const newLeft = Math.max(0, attemptsLeft - 1);
+      setAttemptsLeft(newLeft);
+      // Last attempt used — request rescue from followers
+      if (newLeft === 1) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: myUser } = await supabase
+            .from('users')
+            .select('id')
+            .eq('auth_id', user.id)
+            .single();
+          if (myUser) {
+            await supabase.rpc('request_rescue', {
+              p_trace_id: activeTrace.id,
+              p_rescued_user_id: myUser.id,
+            });
+          }
+        }
+      }
       return;
     }
 
@@ -286,6 +307,12 @@ export default function MapScreen() {
           onContinue={handleContinue}
         />
       )}
+
+      {/* Rescue modal — shown when a follower needs help */}
+      <RescueModal
+        rescue={pendingRescue}
+        onClose={() => setPendingRescue(null)}
+      />
 
       {/* Taunt modal */}
       {solveResult && activeTrace && (
