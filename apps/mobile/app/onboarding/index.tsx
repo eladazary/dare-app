@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,33 +8,67 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import * as Linking from 'expo-linking';
-import * as AuthSession from 'expo-auth-session';
 import { supabase } from '@/lib/supabase';
 import { COLORS } from '@/constants/colors';
+import { FONTS } from '@/constants/typography';
 import { useAuthStore } from '@/store/auth';
+
+type Step = 'email' | 'otp';
 
 export default function OnboardingIndex() {
   const router = useRouter();
   const setPreview = useAuthStore((s) => s.setPreview);
+
+  const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
   const [focused, setFocused] = useState(false);
 
-  const handleSendMagicLink = async () => {
+  const otpRefs = useRef<(TextInput | null)[]>([]);
+
+  // ── Step 1: send OTP ──
+  const handleSendOtp = async () => {
     if (!email.trim()) return;
+    setError('');
     setLoading(true);
-    // makeRedirectUri gives a stable URL that works in both Expo Go and production.
-    // Add the logged URL to Supabase → Auth → URL Configuration → Redirect URLs.
-    const redirectTo = AuthSession.makeRedirectUri({ scheme: 'tracer', path: 'auth/callback' });
-    console.log('[Tracer] Magic link redirect URL:', redirectTo);
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error: err } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      options: { emailRedirectTo: redirectTo },
+      options: { shouldCreateUser: true },
     });
     setLoading(false);
-    if (!error) setSent(true);
+    if (err) { setError(err.message); return; }
+    setStep('otp');
+  };
+
+  // ── Step 2: verify OTP ──
+  const handleVerifyOtp = async () => {
+    const code = otp.join('');
+    if (code.length < 6) return;
+    setError('');
+    setLoading(true);
+    const { error: err } = await supabase.auth.verifyOtp({
+      email: email.trim(),
+      token: code,
+      type: 'email',
+    });
+    setLoading(false);
+    if (err) { setError('Invalid code — check your email and try again.'); return; }
+    // _layout.tsx auth gate picks up the new session and redirects automatically
+  };
+
+  const handleOtpChange = (val: string, idx: number) => {
+    const next = [...otp];
+    next[idx] = val.slice(-1); // one char per box
+    setOtp(next);
+    if (val && idx < 5) otpRefs.current[idx + 1]?.focus();
+  };
+
+  const handleOtpKeyPress = (key: string, idx: number) => {
+    if (key === 'Backspace' && !otp[idx] && idx > 0) {
+      otpRefs.current[idx - 1]?.focus();
+    }
   };
 
   return (
@@ -43,9 +77,7 @@ export default function OnboardingIndex() {
       <Text style={styles.subtitle}>The world leaves traces. Find yours.</Text>
       <Text style={styles.emoji}>🌍</Text>
 
-      {sent ? (
-        <Text style={styles.successText}>Check your messages. Your access link is waiting. ✓</Text>
-      ) : (
+      {step === 'email' ? (
         <>
           <TextInput
             style={[styles.input, { borderColor: focused ? COLORS.amber : COLORS.navyLight }]}
@@ -61,21 +93,56 @@ export default function OnboardingIndex() {
           />
           <TouchableOpacity
             style={styles.button}
-            onPress={handleSendMagicLink}
-            disabled={loading}
+            onPress={handleSendOtp}
+            disabled={loading || !email.trim()}
           >
-            {loading ? (
-              <ActivityIndicator color={COLORS.navy} />
-            ) : (
-              <Text style={styles.buttonText}>Send access link</Text>
-            )}
+            {loading
+              ? <ActivityIndicator color={COLORS.navy} />
+              : <Text style={styles.buttonText}>Send access code</Text>
+            }
+          </TouchableOpacity>
+        </>
+      ) : (
+        <>
+          <Text style={styles.otpHint}>
+            Enter the 6-digit code{'\n'}sent to {email}
+          </Text>
+          <View style={styles.otpRow}>
+            {otp.map((digit, i) => (
+              <TextInput
+                key={i}
+                ref={(r) => { otpRefs.current[i] = r; }}
+                style={[
+                  styles.otpBox,
+                  digit ? styles.otpBoxFilled : null,
+                ]}
+                value={digit}
+                onChangeText={(v) => handleOtpChange(v, i)}
+                onKeyPress={({ nativeEvent }) => handleOtpKeyPress(nativeEvent.key, i)}
+                keyboardType="number-pad"
+                maxLength={1}
+                selectTextOnFocus
+                caretHidden
+              />
+            ))}
+          </View>
+          <TouchableOpacity
+            style={[styles.button, otp.join('').length < 6 && styles.buttonDisabled]}
+            onPress={handleVerifyOtp}
+            disabled={loading || otp.join('').length < 6}
+          >
+            {loading
+              ? <ActivityIndicator color={COLORS.navy} />
+              : <Text style={styles.buttonText}>Confirm →</Text>
+            }
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => { setStep('email'); setOtp(['','','','','','']); setError(''); }}>
+            <Text style={styles.backText}>← Wrong email?</Text>
           </TouchableOpacity>
         </>
       )}
 
-      <TouchableOpacity>
-        <Text style={styles.signInText}>Already an agent? Sign in</Text>
-      </TouchableOpacity>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
       <TouchableOpacity onPress={() => { setPreview(true); router.replace('/(tabs)/map'); }}>
         <Text style={styles.previewText}>Preview the app →</Text>
@@ -95,7 +162,7 @@ const styles = StyleSheet.create({
   title: {
     color: COLORS.ghost,
     fontSize: 48,
-    fontFamily: 'SpaceGrotesk_700Bold',
+    fontFamily: FONTS.uiExtraBold,
     letterSpacing: 4,
     marginBottom: 8,
   },
@@ -118,6 +185,8 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: 12,
     borderWidth: 1,
+    fontFamily: FONTS.ui,
+    fontSize: 15,
   },
   button: {
     backgroundColor: COLORS.amber,
@@ -125,28 +194,64 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
     width: '100%',
+    marginBottom: 12,
+  },
+  buttonDisabled: {
+    opacity: 0.4,
   },
   buttonText: {
     color: COLORS.navy,
-    fontFamily: 'SpaceGrotesk_700Bold',
+    fontFamily: FONTS.uiBold,
     fontSize: 15,
   },
-  successText: {
-    color: COLORS.green,
-    fontSize: 15,
-    textAlign: 'center',
-  },
-  signInText: {
+  otpHint: {
     color: COLORS.concrete,
+    fontFamily: FONTS.mono,
     fontSize: 13,
     textAlign: 'center',
-    marginTop: 24,
+    letterSpacing: 0.5,
+    marginBottom: 28,
+    lineHeight: 20,
+  },
+  otpRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 28,
+  },
+  otpBox: {
+    width: 44,
+    height: 56,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.navyLight,
+    backgroundColor: COLORS.navyMid,
+    color: COLORS.ghost,
+    fontSize: 24,
+    fontFamily: FONTS.uiBold,
+    textAlign: 'center',
+  },
+  otpBoxFilled: {
+    borderColor: COLORS.amber,
+  },
+  backText: {
+    color: COLORS.concrete,
+    fontFamily: FONTS.mono,
+    fontSize: 12,
+    marginTop: 8,
+    letterSpacing: 0.5,
+  },
+  errorText: {
+    color: COLORS.classified,
+    fontFamily: FONTS.mono,
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 12,
   },
   previewText: {
     color: COLORS.amber,
     fontSize: 12,
     textAlign: 'center',
-    marginTop: 16,
+    marginTop: 24,
     opacity: 0.5,
   },
 });
