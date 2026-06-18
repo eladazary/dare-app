@@ -113,7 +113,31 @@ interface TraceCardProps {
   maxAttempts: number;
   stage: TraceStage;
   distanceMeters?: number;
+  expiresAt?: string | null;
+  xpMultiplier?: number;
   onSubmit?: () => void;
+}
+
+function useCountdown(expiresAt?: string | null) {
+  const [secsLeft, setSecsLeft] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    if (!expiresAt) return;
+    const calc = () => Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+    setSecsLeft(calc());
+    const id = setInterval(() => setSecsLeft(calc()), 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+  return secsLeft;
+}
+
+function formatCountdown(secs: number): string {
+  if (secs < 60) return '< 1m';
+  if (secs < 3600) {
+    const m = Math.floor(secs / 60), s = secs % 60;
+    return `${m}m ${s}s`;
+  }
+  const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60);
+  return `${h}h ${m}m`;
 }
 
 const DIFFICULTY_COLOR: Record<string, string> = {
@@ -138,10 +162,14 @@ export default function TraceCard({
   maxAttempts,
   stage,
   distanceMeters,
+  expiresAt,
+  xpMultiplier = 1,
   onSubmit,
 }: TraceCardProps) {
   const isSolved = stage === 'solved';
   const canSubmit = stage === 'close' || stage === 'solved';
+  const secsLeft = useCountdown(expiresAt);
+  const isUrgent = secsLeft !== null && secsLeft < 1800; // < 30 min
 
   return (
     <View style={styles.card}>
@@ -166,13 +194,20 @@ export default function TraceCard({
         <Text style={styles.traceId}>TRACE #{id.slice(-4).toUpperCase()}</Text>
       </View>
 
-      {/* Difficulty badge */}
+      {/* Difficulty badge + TTL + multiplier */}
       <View style={styles.difficultyRow}>
         <View style={[styles.difficultyDot, { backgroundColor: DIFFICULTY_COLOR[difficulty] }]} />
         <Text style={[styles.difficultyText, { color: DIFFICULTY_COLOR[difficulty] }]}>
           {difficulty.toUpperCase()}
         </Text>
-        <Text style={styles.difficultyRadius}>· {DIFFICULTY_RADIUS[difficulty]} RADIUS</Text>
+        {secsLeft !== null && secsLeft > 0 && (
+          <Text style={[styles.ttlBadge, isUrgent && styles.ttlUrgent]}>
+            ⏱ {formatCountdown(secsLeft)}
+          </Text>
+        )}
+        {xpMultiplier > 1 && (
+          <Text style={styles.multiplierBadge}>{xpMultiplier}× XP</Text>
+        )}
       </View>
 
       <View style={styles.divider} />
@@ -318,6 +353,17 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: COLORS.classified,
     letterSpacing: 1.5,
+  },
+  ttlBadge: {
+    fontFamily: FONTS.monoBold, fontSize: 9,
+    color: COLORS.amber, letterSpacing: 1, marginLeft: 6,
+  },
+  ttlUrgent: { color: COLORS.classified },
+  multiplierBadge: {
+    fontFamily: FONTS.monoBold, fontSize: 9,
+    color: COLORS.navy, backgroundColor: COLORS.amber,
+    paddingHorizontal: 5, paddingVertical: 1,
+    borderRadius: 3, marginLeft: 6, letterSpacing: 0.5,
   },
   distanceBadge: {
     backgroundColor: COLORS.redaction,

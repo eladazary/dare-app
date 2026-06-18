@@ -73,6 +73,17 @@ export default function TabLayout() {
         }}
       />
 
+      {/* Journal */}
+      <Tabs.Screen
+        name="journal"
+        options={{
+          title: 'Journal',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name="book" focused={focused} />
+          ),
+        }}
+      />
+
       {/* Arena — social mechanics */}
       <Tabs.Screen
         name="events"

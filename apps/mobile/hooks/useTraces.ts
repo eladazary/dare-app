@@ -17,6 +17,8 @@ export type NearbyTrace = {
   solve_count: number;
   distance_meters: number;
   already_solved: boolean;
+  expires_at: string | null;
+  xp_multiplier: number;
 };
 
 export type UserLocation = {
@@ -87,6 +89,25 @@ export type GhostTrail = {
   lat: number;
   lng: number;
 };
+
+export function useRevealedZones(userId: string | null) {
+  return useQuery({
+    queryKey: ['revealed-zones', userId],
+    queryFn: async () => {
+      if (!userId) return [];
+      const { data } = await supabase
+        .from('revealed_zones')
+        .select('cell_key')
+        .eq('user_id', userId);
+      return (data ?? []).map((r: any) => {
+        const [lat, lng] = r.cell_key.split('_').map(Number);
+        return { lat, lng };
+      });
+    },
+    enabled: !!userId,
+    staleTime: 60_000,
+  });
+}
 
 export function useGhostTrails(location: UserLocation | null) {
   return useQuery({

@@ -10,7 +10,7 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
 } from 'react-native';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Marker, Polygon, PROVIDER_DEFAULT } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const SCREEN_H = Dimensions.get('window').height;
@@ -42,7 +42,7 @@ function effectiveSolveRadius(baseRadius: number, userLevel: string): number {
   return Math.max(5, Math.round(baseRadius * mult)); // min 5m
 }
 import { useRescueStore } from '@/stores/rescueStore';
-import { useLocation, useNearbyTraces, useGhostTrails, type NearbyTrace } from '@/hooks/useTraces';
+import { useLocation, useNearbyTraces, useGhostTrails, useRevealedZones, type NearbyTrace } from '@/hooks/useTraces';
 import { supabase } from '@/lib/supabase';
 
 // ─────────────────────────────────────────────
@@ -99,23 +99,29 @@ export default function MapScreen() {
   const { location, error: locationError, granted } = useLocation();
   const { data: traces = [], isLoading, refetch } = useNearbyTraces(location);
   const { data: ghostTrails = [] } = useGhostTrails(location);
+  const { data: revealedZones = [], refetch: refetchZones } = useRevealedZones(publicUserId);
 
   const [activeTrace, setActiveTrace] = useState<NearbyTrace | null>(null);
   const [attemptsLeft, setAttemptsLeft] = useState(3);
+  const [publicUserId, setPublicUserId] = useState<string | null>(null);
   const [showCamera, setShowCamera] = useState(false);
   const [showAnswer, setShowAnswer] = useState(false);
   const [solveResult, setSolveResult] = useState<{ selfieUri: string; startedAt: number } | null>(null);
   const [showTaunt, setShowTaunt] = useState(false);
+  const [solveMultiplier, setSolveMultiplier] = useState(1);
   const [showExtraAttempts, setShowExtraAttempts] = useState(false);
   const [userLevel, setUserLevel] = useState('wanderer');
   const [seeding, setSeeding] = useState(false);
 
-  // Load user level for radius scaling
+  // Load user level + public ID for radius scaling and fog of war
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
-      supabase.from('users').select('level').eq('auth_id', user.id).single()
-        .then(({ data }) => { if (data?.level) setUserLevel(data.level); });
+      supabase.from('users').select('id, level').eq('auth_id', user.id).single()
+        .then(({ data }) => {
+          if (data?.level) setUserLevel(data.level);
+          if (data?.id) setPublicUserId(data.id);
+        });
     });
   }, []);
   const { pendingRescue, setPendingRescue } = useRescueStore();
@@ -125,6 +131,13 @@ export default function MapScreen() {
     setActiveTrace(trace);
     setAttemptsLeft(trace.max_attempts);
     startedAtRef.current = Date.now();
+    // Roll XP multiplier (pre-set on TTL traces overrides random roll)
+    const preSet = trace.xp_multiplier ?? 1;
+    if (preSet > 1) { setSolveMultiplier(preSet); }
+    else {
+      const r = Math.random();
+      setSolveMultiplier(r < 0.60 ? 1 : r < 0.85 ? 2 : r < 0.97 ? 3 : 5);
+    }
     Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
   }, [slideAnim]);
 
@@ -195,6 +208,7 @@ export default function MapScreen() {
 
     Animated.timing(slideAnim, { toValue: SCREEN_H, duration: 250, useNativeDriver: true }).start();
     setSolveResult({ selfieUri, startedAt: startedAtRef.current });
+    refetchZones();
   }, [activeTrace, location, attemptsLeft]);
 
   const handleContinue = useCallback(() => {
@@ -273,6 +287,22 @@ export default function MapScreen() {
               distanceMeters={Math.round(trace.distance_meters)}
             />
           </Marker>
+        ))}
+
+        {/* Fog of war — revealed zones */}
+        {revealedZones.map((zone, i) => (
+          <Polygon
+            key={`zone-${i}`}
+            coordinates={[
+              { latitude: zone.lat - 0.0005, longitude: zone.lng - 0.0005 },
+              { latitude: zone.lat + 0.0005, longitude: zone.lng - 0.0005 },
+              { latitude: zone.lat + 0.0005, longitude: zone.lng + 0.0005 },
+              { latitude: zone.lat - 0.0005, longitude: zone.lng + 0.0005 },
+            ]}
+            fillColor="rgba(184,134,11,0.10)"
+            strokeColor="rgba(184,134,11,0.25)"
+            strokeWidth={0.5}
+          />
         ))}
 
         {/* Ghost trail pins — blurred friend activity */}
@@ -381,6 +411,7 @@ export default function MapScreen() {
           difficulty={activeTrace.difficulty}
           selfieUri={solveResult.selfieUri}
           timeSeconds={Math.round((Date.now() - solveResult.startedAt) / 1000)}
+          xpMultiplier={solveMultiplier}
           onTaunt={() => setShowTaunt(true)}
           onContinue={handleContinue}
         />
@@ -443,6 +474,8 @@ export default function MapScreen() {
                 maxAttempts={activeTrace.max_attempts}
                 stage={stage}
                 distanceMeters={Math.round(activeTrace.distance_meters)}
+                expiresAt={activeTrace.expires_at}
+                xpMultiplier={activeTrace.xp_multiplier ?? 1}
                 onSubmit={handleSubmit}
               />
               <Text style={styles.solveCount}>

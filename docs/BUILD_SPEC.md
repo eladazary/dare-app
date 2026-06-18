@@ -247,6 +247,123 @@ The trace card shows a riddle with black redaction bars over key phrases. As the
 
 ---
 
+## Retention Features Backlog
+
+Features confirmed for future build based on research + product review. Listed in priority order.
+
+### 🔴 High priority (build before launch)
+
+**Streak shields UI + monetization**
+- Already in DB (`streak_shields` column). `use_streak_shield()` RPC built.
+- Show shield count prominently on profile next to streak
+- 2 free shields/month, additional purchasable ($0.99 each)
+- When streak would break → toast: "Shield used. Streak protected 🛡"
+- Referral gives 1 free shield (already wired)
+
+**Category badges**
+- Traces have `category` column (historic/food/music/sport/art/nightlife/market/general)
+- `user_badges` table built in DB
+- Logic: on each solve, check if category threshold crossed → insert badge
+- UI: horizontal scroll row on profile, each chip shows progress bar + lock/unlock state
+- Thresholds: 5 food → Food Explorer 🍜, 5 historic → Historian 🏛, 3 music → Music Hunter 🎵, 3 art → Street Artist 🎨, 5 sport → Sport Seeker ⚽, 5 nightlife → Night Owl 🌙, 3 market → Market Guru 🛒, 10 general → Explorer 📍
+
+**TTL / time-limited traces**
+- DB columns exist: `spawned_at`, `expires_at`, `xp_multiplier`
+- Countdown timer + "2× XP" badge built in TraceCard
+- RPC already filters expired traces
+- Create TTL traces via script: `INSERT INTO traces (..., expires_at = now() + interval '8 hours', xp_multiplier = 2)`
+- Flash event: send push to all users in city → create 5–10 TTL traces → expires in 4h
+
+---
+
+### 🟡 Medium priority (post-launch)
+
+**Weekly reset friend leaderboard**
+- Current leaderboard is global, all-time
+- Add `weekly_xp` column to users (reset every Monday midnight)
+- Friend graph via `follows` table already exists
+- New tab in Arena: "This Week" leaderboard showing only people you follow
+- Reset cron: Supabase Edge Function triggered weekly
+
+**Flash events**
+- Backend: `flash_events` table with `city_id`, `multiplier`, `starts_at`, `ends_at`, `neighborhood`
+- Push notification: "⚡ Double points in Florentin for 2 hours!"
+- During event: map shows a glowing polygon around the neighborhood
+- All traces within the flash zone get `xp_multiplier` overridden for the duration
+- Manual trigger from admin or Supabase dashboard
+
+**Daily challenge**
+- Challenge tied to a category rather than a specific place: "Today's theme: Music"
+- All music-category traces give 2× XP for 24h
+- Push at midnight local time
+- Shows countdown on map screen header
+
+**Personalized push timing**
+- Store `completed_at` timestamp for each solve
+- After 7 solves, compute user's typical completion hour
+- Send daily reminder 30 min before their typical window
+- Requires background job (Supabase Edge Function on cron)
+
+**Crew / squad joint goals**
+- `squad_challenges` table: `squad_id`, `goal_type` (count, category, city), `target`, `progress`, `ends_at`
+- Weekly auto-generated: "Your squad needs 10 traces this week"
+- Shared progress bar on profile screen under squad section
+- Reward: all members get 200 XP + shield on completion
+
+---
+
+### ⬜ Low priority / Phase 3+
+
+**Fog of war city map (full version)**
+- DB + trigger built (`revealed_zones` table, `reveal_zone_on_solve()` trigger)
+- Current implementation: amber polygons on MapView showing explored zones
+- Full version: a separate "City Map" screen showing the full city with black unexplored overlay
+- Reveal zones are 100m grid cells stored per user
+- Could render as a separate MapView with a dark overlay polygon covering the entire city minus revealed cells (complex but beautiful)
+
+**Place journal (full version)**
+- Basic version built (journal.tsx tab)
+- Enhancement: make cards beautiful with dark background + selfie as full-bleed bg, place name overlaid
+- Add `fun_fact` to trace generation prompt so AI populates it
+- Enable sharing individual journal entries as story-format images
+
+**AI-generated trace fun facts**
+- Update `generate-traces.py` and edge function system prompt to also generate `fun_fact`
+- Format: one sentence, surprising, specific to the place
+- Store in `traces.fun_fact` column (already added)
+
+**AI vision validation on selfies**
+- When solving, send selfie to AWS Rekognition or Claude Vision
+- Check: does the photo background match the expected place type?
+- Grade: 0.0–1.0 confidence score
+- Below 0.3: flag for manual review or require another photo
+- Complex, expensive at scale — implement only when cheating is a confirmed problem
+
+**Community flagging**
+- `trace_reports` table: `reporter_id`, `solve_id`, `reason`
+- Flag button on each entry in Field Intel feed
+- Auto-suspend solve XP when 3+ flags received, pending review
+- High-rep users (100+ solves) can fast-track review
+
+**Per-user clue variation (anti-cheat)**
+- When inserting a trace solve, store a `solve_variant` (A/B/C)
+- Different users see slightly different clue phrasing for the same trace
+- Prevents screenshot sharing (your clue text won't match someone else's)
+- LLM generates 3 variants of each clue at creation time
+
+**Live race (real-time)**
+- Both players start the same trace simultaneously
+- Real-time dots on map via Supabase Realtime
+- First selfie wins
+- Requires solving the Supabase Realtime location-sharing architecture
+
+**Variable reward scratch card (full UX)**
+- Current: text reveal of multiplier in SolveReveal
+- Full version: actual scratch card visual — grey overlay that "scratches" away with gesture
+- Uses PanResponder to detect swipe, reveals multiplier underneath
+
+
+
 ## V2 Backlog (post-launch)
 
 These are deferred, not dropped. Build once you have users validating the core loop:

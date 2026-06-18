@@ -8,6 +8,7 @@ interface Props {
   difficulty: string;
   selfieUri: string | null;
   timeSeconds: number;
+  xpMultiplier?: number;
   onTaunt: () => void;
   onContinue: () => void;
 }
@@ -17,14 +18,25 @@ function formatTime(secs: number) {
   return `${Math.floor(secs / 60)}m ${secs % 60}s`;
 }
 
-export default function SolveReveal({ placeName, difficulty, selfieUri, timeSeconds, onTaunt, onContinue }: Props) {
-  const bg       = useRef(new Animated.Value(0)).current;
-  const cardOp   = useRef(new Animated.Value(0)).current;
-  const cardSc   = useRef(new Animated.Value(0.85)).current;
-  const stampOp  = useRef(new Animated.Value(0)).current;
-  const stampSc  = useRef(new Animated.Value(1.4)).current;
-  const detailOp = useRef(new Animated.Value(0)).current;
-  const actionsOp= useRef(new Animated.Value(0)).current;
+const MULTIPLIER_CONFIG: Record<number, { label: string; color: string; size: number }> = {
+  1: { label: '1× XP', color: COLORS.concrete, size: 22 },
+  2: { label: '2× XP BONUS!', color: COLORS.amber, size: 26 },
+  3: { label: '3× MEGA BONUS!', color: COLORS.amber, size: 30 },
+  5: { label: '5× LEGENDARY!', color: COLORS.classified, size: 34 },
+};
+
+export default function SolveReveal({ placeName, difficulty, selfieUri, timeSeconds, xpMultiplier = 1, onTaunt, onContinue }: Props) {
+  const bg        = useRef(new Animated.Value(0)).current;
+  const cardOp    = useRef(new Animated.Value(0)).current;
+  const cardSc    = useRef(new Animated.Value(0.85)).current;
+  const stampOp   = useRef(new Animated.Value(0)).current;
+  const stampSc   = useRef(new Animated.Value(1.4)).current;
+  const detailOp  = useRef(new Animated.Value(0)).current;
+  const actionsOp = useRef(new Animated.Value(0)).current;
+  // Multiplier reveal
+  const multOp    = useRef(new Animated.Value(0)).current;
+  const multSc    = useRef(new Animated.Value(0.5)).current;
+  const multConfig = MULTIPLIER_CONFIG[xpMultiplier] ?? MULTIPLIER_CONFIG[1];
 
   useEffect(() => {
     Animated.sequence([
@@ -40,7 +52,12 @@ export default function SolveReveal({ placeName, difficulty, selfieUri, timeSeco
       ]),
       Animated.delay(200),
       Animated.timing(detailOp, { toValue: 1, duration: 400, useNativeDriver: true }),
-      Animated.delay(400),
+      Animated.delay(300),
+      Animated.parallel([
+        Animated.timing(multOp, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.spring(multSc, { toValue: 1, bounciness: 12, useNativeDriver: true }),
+      ]),
+      Animated.delay(600),
       Animated.timing(actionsOp, { toValue: 1, duration: 400, useNativeDriver: true }),
     ]).start();
   }, []);
@@ -63,6 +80,13 @@ export default function SolveReveal({ placeName, difficulty, selfieUri, timeSeco
 
           <Animated.View style={[styles.stamp, { opacity: stampOp, transform: [{ scale: stampSc }, { rotate: '-8deg' }] }]}>
             <Text style={styles.stampText}>SOLVED</Text>
+          </Animated.View>
+
+          {/* XP multiplier reveal */}
+          <Animated.View style={[styles.multiplierRow, { opacity: multOp, transform: [{ scale: multSc }] }]}>
+            <Text style={[styles.multiplierText, { color: multConfig.color, fontSize: multConfig.size }]}>
+              {multConfig.label}
+            </Text>
           </Animated.View>
 
           <Animated.View style={{ opacity: detailOp }}>
@@ -119,6 +143,12 @@ const styles = StyleSheet.create({
   selfie: { width: '100%', height: '100%' },
   photoPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   photoIcon: { fontSize: 48 },
+  multiplierRow: {
+    alignItems: 'center', paddingVertical: 8, marginBottom: 4,
+  },
+  multiplierText: {
+    fontFamily: FONTS.uiExtraBold, textAlign: 'center', letterSpacing: 0.5,
+  },
   stamp: {
     position: 'absolute', top: 24, right: 12,
     borderWidth: 2.5, borderColor: COLORS.green,
