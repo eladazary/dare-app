@@ -95,13 +95,10 @@ export default function TabLayout() {
         }}
       />
 
-      {/* Index — hidden from tab bar, kept for routing */}
-      <Tabs.Screen
-        name="index"
-        options={{
-          href: null,
-        }}
-      />
+      {/* Legacy screens — hidden from tab bar */}
+      <Tabs.Screen name="index" options={{ href: null }} />
+      <Tabs.Screen name="submit" options={{ href: null }} />
+      <Tabs.Screen name="gallery" options={{ href: null }} />
     </Tabs>
   );
 }
