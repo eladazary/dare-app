@@ -148,5 +148,65 @@
     "lat": 51.5385, "lng": -0.0165,
     "type": "stadium",
     "description": "Built for 2012 Olympics where Usain Bolt ran 9.63 and Mo Farah won two golds in one night. Now home to West Ham United after a controversial move. The athletics track was removed, the stadium half-filled. Legacy is complicated."
+  },
+  {
+    "name": "Amy Winehouse's flat — Camden",
+    "lat": 51.5396, "lng": -0.1424,
+    "type": "celebrity_home",
+    "description": "Amy Winehouse lived at 30 Camden Square. She was found dead there on July 23, 2011, aged 27. Her neighbours still leave flowers. Camden claimed her — the market, the pubs, the hair. She was the most naturally talented British singer of her generation and everyone who knew her knew it."
+  },
+  {
+    "name": "BRIT School — Adele and Amy",
+    "lat": 51.3773, "lng": -0.1103,
+    "type": "performing_arts_school",
+    "description": "Free performing arts school in Croydon where Adele, Amy Winehouse, Kate Nash and Jessie J were all students at the same time. No fees. State-funded. The most improbable factory of talent in British music history. Adele applied three times before they took her."
+  },
+  {
+    "name": "Stormzy's Croydon",
+    "lat": 51.3762, "lng": -0.0982,
+    "type": "rapper_origin",
+    "description": "Michael Ebenazer Kwadjo Omari Owuo Jr — Stormzy — grew up in Thornton Heath, Croydon. He became the first Black British solo artist to headline Glastonbury, 2019. Wore a Banksy vest. Had Michael Burnham from Star Trek perform Shakespeare. Croydon hadn't felt like the centre of anything until then."
+  },
+  {
+    "name": "Harry Styles' first London show — The Garage",
+    "lat": 51.5702, "lng": -0.1049,
+    "type": "first_gig",
+    "description": "Before Madison Square Garden, before Coachella, before the Grammy, Harry Styles played tiny venues in North London as a solo artist learning who he was after One Direction. The Garage in Highbury is a 600-capacity club. He still remembers every show."
+  },
+  {
+    "name": "Tottenham — Son Heung-min's pitch",
+    "lat": 51.6041, "lng": -0.0664,
+    "type": "football_star",
+    "description": "Son Heung-min is the highest-scoring Asian player in Premier League history. He grew up in South Korea watching European football at 4am. He arrived at Spurs in 2015 and became one of the most beloved players the club has ever had. His father trained him to 1000 kicks a day from age 6."
+  },
+  {
+    "name": "Dua Lipa's Hammersmith",
+    "lat": 51.4927, "lng": -0.2236,
+    "type": "celebrity_origin",
+    "description": "Dua Lipa grew up in Hammersmith and attended Sylvia Young Theatre School before her family moved back to Kosovo. She returned to London at 15 alone to pursue music. Worked as a model, a hostess, a promoter. In 2018 she won two Grammy nominations. London took its time but it came."
+  },
+  {
+    "name": "Ed Sheeran's first open mic — The Bedford",
+    "lat": 51.4553, "lng": -0.1413,
+    "type": "open_mic_venue",
+    "description": "Ed Sheeran slept rough in London for months, performing at open mics every night for free. The Bedford in Balham was one of the venues that let him play. He had nowhere to stay so he slept outside Buckingham Palace on a cardboard box. Then Elton John heard him."
+  },
+  {
+    "name": "Marcus Rashford's school mural, Wythenshawe",
+    "lat": 51.5074, "lng": -0.1278,
+    "type": "social_activist",
+    "description": "Marcus Rashford grew up on free school meals. During COVID he single-handedly forced the UK government to extend the free meals programme for children — twice. A 22-year-old footballer changed national policy through Twitter. A mural of him appeared overnight in Manchester. London's Southwark council named a street after him."
+  },
+  {
+    "name": "Coldplay — The Laurel Tree pub, Camden",
+    "lat": 51.5396, "lng": -0.1424,
+    "type": "band_origin",
+    "description": "Coldplay played their first ever gig at The Laurel Tree in Camden in 1996. They were four university students who met at UCL. They had 50 people watching. The pub closed in 2005. Chris Martin, Will Champion, Jonny Buckland and Guy Berryman have since sold 100 million records."
+  },
+  {
+    "name": "Jaden Smith's London pop-up — Selfridges",
+    "lat": 51.5143, "lng": -0.1527,
+    "type": "celebrity_event",
+    "description": "When Jaden Smith brings MSFTS to London, he uses Selfridges as his stage. The intersection of fashion, music and celebrity that Gen Z lives in plays out on Oxford Street. Will Smith's son who refused to call himself Will Smith's son and built his own thing anyway."
   }
 ]
