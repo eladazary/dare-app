@@ -1,0 +1,152 @@
+[
+  {
+    "name": "Abbey Road Studios",
+    "lat": 51.5320, "lng": -0.1777,
+    "type": "music_studio",
+    "description": "The Beatles recorded almost every album here 1962-1970. The crossing outside is the most photographed zebra crossing in the world. Paul McCartney still comes back. Every tourist does the crossing — most don't know it's still a working studio."
+  },
+  {
+    "name": "The Blind Beggar Pub",
+    "lat": 51.5216, "lng": -0.0455,
+    "type": "pub",
+    "description": "In 1966, Ronnie Kray walked in and shot George Cornell dead in front of 40 witnesses. Nobody saw anything. The Krays ran East London like a mafia. This pub became the symbol of their reign of terror — and their downfall."
+  },
+  {
+    "name": "Ronnie Scott's Jazz Club",
+    "lat": 51.5134, "lng": -0.1316,
+    "type": "music_venue",
+    "description": "Opened 1959 in Soho. Jimi Hendrix played his last ever concert here, three days before he died in 1970. Miles Davis, Ella Fitzgerald, Bill Evans — everyone played here. The velvet chairs still carry the history."
+  },
+  {
+    "name": "Brixton Market — David Bowie's birthplace",
+    "lat": 51.4618, "lng": -0.1147,
+    "type": "birthplace",
+    "description": "David Bowie was born on Stansfield Road, 100 metres from Brixton Market. When he died in 2016, thousands gathered here spontaneously and sang his songs all night. A mural appeared within hours. Brixton claimed him back."
+  },
+  {
+    "name": "The Grapes Pub, Limehouse",
+    "lat": 51.5098, "lng": -0.0293,
+    "type": "pub",
+    "description": "Ian McKellen (Gandalf) co-owns this 1583 riverside pub. Charles Dickens drank here and described it in Our Mutual Friend. The Thames floods the cellar every spring tide. The walls are so old they whisper."
+  },
+  {
+    "name": "Berwick Street Record Shops",
+    "lat": 51.5134, "lng": -0.1338,
+    "type": "music_street",
+    "description": "Soho's record street — where Oasis shot the Morning Glory album cover in 1995. Sister Ray, Reckless Records, Sister Ray — independent shops that survived Spotify. The DJs who defined UK dance music bought their vinyl here."
+  },
+  {
+    "name": "Leake Street Graffiti Tunnel",
+    "lat": 51.5020, "lng": -0.1136,
+    "type": "street_art",
+    "description": "Banksy opened this tunnel in 2008 as a legal graffiti zone. Every wall changes within days. Street artists from 40 countries have painted here. The only permanent thing is the impermanence."
+  },
+  {
+    "name": "The Foundling Museum",
+    "lat": 51.5229, "lng": -0.1216,
+    "type": "museum",
+    "description": "Britain's first public art gallery — opened 1740 so Hogarth could raise money for abandoned babies. Handel conducted Messiah here. Charles Dickens was obsessed with it. The tokens mothers left when abandoning their children are still displayed."
+  },
+  {
+    "name": "Borough Market",
+    "lat": 51.5055, "lng": -0.0909,
+    "type": "marketplace",
+    "description": "Market on this site since 1014 AD. Roman occupation before that. In 2017 three men drove into the crowd here killing 8. The market reopened 11 days later. The stall holders refused to let the attack define them."
+  },
+  {
+    "name": "Notting Hill Gate — Carnival",
+    "lat": 51.5093, "lng": -0.1955,
+    "type": "cultural_site",
+    "description": "The Notting Hill Carnival started in 1966 after race riots. Caribbean immigrants created Europe's largest street festival as an act of reclamation. Two million people come every August Bank Holiday. Police in 1958 threw stones. In 1976 they fought back."
+  },
+  {
+    "name": "The Old Vic Theatre",
+    "lat": 51.5046, "lng": -0.1119,
+    "type": "theatre",
+    "description": "Laurence Olivier ran it. Kevin Spacey ran it. Judi Dench, Daniel Day-Lewis, Tom Hiddleston all made their names here. In 2003 it was nearly demolished. 2004 an anonymous donor saved it for £1. The donor was a Saudi prince."
+  },
+  {
+    "name": "Fabric Nightclub",
+    "lat": 51.5207, "lng": -0.1028,
+    "type": "nightclub",
+    "description": "Opened 1999 in a Victorian meat cold-storage vault. Closed by police in 2016 after two drug deaths. 150,000 people signed a petition to reopen it. It reopened 2017. The floor has speakers built in — you feel the bass through your feet."
+  },
+  {
+    "name": "Tottenham Hotspur Stadium",
+    "lat": 51.6041, "lng": -0.0664,
+    "type": "stadium",
+    "description": "The newest stadium in the Premier League — opened 2019 on the exact site of White Hart Lane where Jimmy Greaves scored 266 goals. Has the only NFL field in Europe under the grass. Spurs spent 10 years away while it was built."
+  },
+  {
+    "name": "Wembley Stadium",
+    "lat": 51.5560, "lng": -0.2796,
+    "type": "national_stadium",
+    "description": "England's national stadium. Where England won the World Cup in 1966. Where Freddie Mercury played the greatest live performance in rock history at Live Aid 1985. 90,000 people. Queen had 15 minutes. They played for 21."
+  },
+  {
+    "name": "Columbia Road Flower Market",
+    "lat": 51.5290, "lng": -0.0714,
+    "type": "flower_market",
+    "description": "Sunday only. 7am to 2pm. Every type of flower for £5. In the 1800s this was a slum market feeding the poorest East Londoners. Now it feeds Instagram. The stall holders still shout their prices like their grandfathers did."
+  },
+  {
+    "name": "Rough Trade East",
+    "lat": 51.5219, "lng": -0.0706,
+    "type": "record_shop",
+    "description": "The original Rough Trade in Notting Hill signed The Smiths, The Strokes, Arcade Fire. This East London store is where Arctic Monkeys' first demo was discovered. Staff recommendations have more cultural power than most music critics."
+  },
+  {
+    "name": "The George Inn, Southwark",
+    "lat": 51.5038, "lng": -0.0909,
+    "type": "pub",
+    "description": "London's only surviving galleried coaching inn. 1677. Charles Dickens mentioned it in Little Dorrit. Shakespeare drank in the original pub — burned in the Great Fire. The yard where coaches loaded is unchanged. The NMC owns it."
+  },
+  {
+    "name": "Hackney Wick",
+    "lat": 51.5430, "lng": -0.0227,
+    "type": "arts_neighborhood",
+    "description": "Post-industrial canal district that became London's art hub. Tracey Emin had a studio here. When the 2012 Olympics arrived next door, rents tripled and half the artists were priced out. What replaced them is still being written."
+  },
+  {
+    "name": "The Crossness Pumping Station",
+    "lat": 51.5037, "lng": 0.1295,
+    "type": "industrial_landmark",
+    "description": "Joseph Bazalgette's 1865 sewage pumping station that saved London from cholera. The ironwork inside is astonishing — decorated like a cathedral. For 30 years it sat derelict. Volunteers restored it. London owes its survival to this building."
+  },
+  {
+    "name": "Soho — The Marquee Club site",
+    "lat": 51.5131, "lng": -0.1329,
+    "type": "music_heritage",
+    "description": "At 90 Wardour Street, The Rolling Stones, Led Zeppelin, The Who, Jimi Hendrix, David Bowie all played their early gigs. The club closed in 1996. There's a Wardour Street pizza place there now. The wall has a small plaque."
+  },
+  {
+    "name": "Peckham Rye",
+    "lat": 51.4697, "lng": -0.0689,
+    "type": "park",
+    "description": "William Blake saw angels here aged 8. He described them sitting in the oak trees on Peckham Rye. His first mystical vision — which shaped everything he ever wrote. The trees are still there."
+  },
+  {
+    "name": "Brick Lane",
+    "lat": 51.5216, "lng": -0.0715,
+    "type": "cultural_street",
+    "description": "Huguenot refugees built a church here in 1743. It became a synagogue in 1898 when Jews fled pogroms. In 1976 it became a mosque as Bangladeshis arrived. Same building. Three faiths. One street. Now also the best bagels in London."
+  },
+  {
+    "name": "Earl's Court Exhibition Centre site",
+    "lat": 51.4908, "lng": -0.1942,
+    "type": "demolished_venue",
+    "description": "Demolished 2015 for luxury flats. Before that: Led Zeppelin's The Song Remains the Same filmed here. Madonna's first UK concert. Pink Floyd's The Wall show. Queen's final concert with Freddie Mercury 1991. A whole era in one building — gone."
+  },
+  {
+    "name": "The Windmill Pub, Brixton",
+    "lat": 51.4641, "lng": -0.1127,
+    "type": "music_pub",
+    "description": "Where Amy Winehouse and Adele were discovered playing £5 open mic nights. PJ Harvey, Radiohead, The Libertines all played here before anyone knew their names. Still charges £5 for a pint. Still has open mics."
+  },
+  {
+    "name": "London Stadium — Olympic Legacy",
+    "lat": 51.5385, "lng": -0.0165,
+    "type": "stadium",
+    "description": "Built for 2012 Olympics where Usain Bolt ran 9.63 and Mo Farah won two golds in one night. Now home to West Ham United after a controversial move. The athletics track was removed, the stadium half-filled. Legacy is complicated."
+  }
+]
