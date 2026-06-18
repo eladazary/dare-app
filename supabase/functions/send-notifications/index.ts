@@ -2,232 +2,114 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
 type NotificationType =
-  | "challenge_drop"
-  | "reminder"
-  | "streak_warning"
-  | "ceremony";
+  | "trace_nearby"
+  | "taunt_received"
+  | "rescue_needed"
+  | "rescue_success"
+  | "rescue_failed"
+  | "territory_lost"
+  | "streak_warning";
 
-interface NotificationRequest {
+interface SendRequest {
   type: NotificationType;
-  city_id: string;
-  user_ids?: string[];
-  data?: {
-    title?: string;
-    body?: string;
-    challengeId?: string;
-    city_name?: string;
-    streak_days?: number;
-  };
-}
-
-interface ExpoPushMessage {
-  to: string;
-  title: string;
-  body: string;
+  user_ids: string[];
   data?: Record<string, unknown>;
 }
 
-interface UserWithToken {
-  id: string;
-  push_token: string;
-}
-
-function getDefaultContent(
-  type: NotificationType,
-  cityName: string,
-  streakDays?: number,
-): { title: string; body: string } {
+function buildMessage(type: NotificationType, data: Record<string, unknown> = {}): { title: string; body: string } {
   switch (type) {
-    case "challenge_drop":
+    case "trace_nearby":
       return {
-        title: "🏙️ Today's challenge is live",
-        body: `Go outside and explore ${cityName}. You have until midnight.`,
+        title: "🔴 Trace detected",
+        body: `A trace appeared ${data.distance_meters ?? "nearby"}m from you. Crack it.`,
       };
-    case "reminder":
+    case "taunt_received":
       return {
-        title: "📸 Don't forget today's challenge",
-        body: "Submit before midnight to keep your streak alive.",
+        title: "⚔️ You've been taunted",
+        body: `${data.challenger_name ?? "Someone"} solved a trace in ${data.time ?? "?"}. 48h to beat it.`,
+      };
+    case "rescue_needed":
+      return {
+        title: "🤝 Your friend needs help",
+        body: `${data.friend_name ?? "A friend"} is on their last attempt. Send a hint to save your streak.`,
+      };
+    case "rescue_success":
+      return {
+        title: "✓ Streak saved",
+        body: `${data.friend_name ?? "Your friend"} found it. Your run continues.`,
+      };
+    case "rescue_failed":
+      return {
+        title: "✗ Run broken",
+        body: `${data.friend_name ?? "Your friend"} couldn't find it in time.`,
+      };
+    case "territory_lost":
+      return {
+        title: "🚩 Territory taken",
+        body: `${data.attacker_name ?? "Someone"} took your ${data.zone_name ?? "zone"}.`,
       };
     case "streak_warning":
       return {
-        title: "🔥 Your streak is at risk!",
-        body: `Submit today's challenge before midnight or lose your ${streakDays ?? ""}${streakDays ? "-day " : ""}streak.`,
-      };
-    case "ceremony":
-      return {
-        title: "🏆 Tonight's results are in",
-        body: `See how you ranked in ${cityName} today.`,
+        title: "🔥 Run at risk",
+        body: "Solve a trace today or your run breaks.",
       };
   }
-}
-
-async function sendExpoBatch(messages: ExpoPushMessage[]): Promise<unknown> {
-  const resp = await fetch(EXPO_PUSH_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(messages),
-  });
-
-  if (!resp.ok) {
-    throw new Error(
-      `Expo push API error ${resp.status}: ${await resp.text()}`,
-    );
-  }
-
-  return await resp.json();
 }
 
 Deno.serve(async (req: Request) => {
-  try {
-    const body: NotificationRequest = await req.json();
-    const { type, city_id, user_ids, data } = body;
+  if (req.method !== "POST") {
+    return new Response("Method not allowed", { status: 405 });
+  }
 
-    if (!type || !city_id) {
-      return new Response(
-        JSON.stringify({ error: "Missing required fields: type, city_id" }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
-      );
+  try {
+    const { type, user_ids, data = {} }: SendRequest = await req.json();
+
+    if (!type || !user_ids?.length) {
+      return new Response(JSON.stringify({ error: "type and user_ids required" }), { status: 400 });
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-    // Fetch city name for default notification content
-    const { data: city } = await supabase
-      .from("cities")
-      .select("name")
-      .eq("id", city_id)
-      .single();
-    const cityName = city?.name ?? data?.city_name ?? "your city";
-
-    // Fetch users with push tokens
-    let usersQuery = supabase
+    const { data: users } = await supabase
       .from("users")
       .select("id, push_token")
+      .in("id", user_ids)
       .not("push_token", "is", null)
       .neq("push_token", "");
 
-    if (user_ids && user_ids.length > 0) {
-      usersQuery = usersQuery.in("id", user_ids);
-    } else {
-      // Get all users in this city
-      const { data: cityUsers } = await supabase
-        .from("city_users")
-        .select("user_id")
-        .eq("city_id", city_id);
-
-      const cityUserIds = (cityUsers ?? []).map(
-        (cu: { user_id: string }) => cu.user_id,
-      );
-      if (cityUserIds.length === 0) {
-        return new Response(
-          JSON.stringify({ message: "No users in city", sent: 0 }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
-      }
-      usersQuery = usersQuery.in("id", cityUserIds);
+    if (!users?.length) {
+      return new Response(JSON.stringify({ sent: 0, message: "No push tokens found" }), { status: 200 });
     }
 
-    const { data: users, error: usersError } = await usersQuery;
+    const { title, body } = buildMessage(type, data);
 
-    if (usersError) {
-      return new Response(
-        JSON.stringify({ error: `Failed to fetch users: ${usersError.message}` }),
-        { status: 500, headers: { "Content-Type": "application/json" } },
-      );
-    }
-
-    const usersWithTokens: UserWithToken[] = (users ?? []).filter(
-      (u: UserWithToken) => u.push_token,
-    );
-
-    if (usersWithTokens.length === 0) {
-      return new Response(
-        JSON.stringify({ message: "No users with push tokens", sent: 0 }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }
-
-    // Build default content
-    const defaults = getDefaultContent(type, cityName, data?.streak_days);
-    const notifTitle = data?.title ?? defaults.title;
-    const notifBody = data?.body ?? defaults.body;
-
-    // Build Expo push messages
-    const messages: ExpoPushMessage[] = usersWithTokens.map((user) => ({
-      to: user.push_token,
-      title: notifTitle,
-      body: notifBody,
-      data: {
-        type,
-        cityId: city_id,
-        ...(data?.challengeId ? { challengeId: data.challengeId } : {}),
-      },
+    const messages = users.map((u: { id: string; push_token: string }) => ({
+      to: u.push_token,
+      title,
+      body,
+      sound: "default",
+      data: { type, ...data },
     }));
 
-    // Batch into groups of 100 (Expo limit)
-    const BATCH_SIZE = 100;
-    const batches: ExpoPushMessage[][] = [];
-    for (let i = 0; i < messages.length; i += BATCH_SIZE) {
-      batches.push(messages.slice(i, i + BATCH_SIZE));
-    }
-
-    let totalSent = 0;
-    const batchResults: unknown[] = [];
-    const errors: string[] = [];
-
-    for (const batch of batches) {
-      try {
-        const result = await sendExpoBatch(batch);
-        batchResults.push(result);
-        totalSent += batch.length;
-      } catch (err) {
-        errors.push(err instanceof Error ? err.message : String(err));
-        console.error("Expo push batch error:", err);
-      }
-    }
-
-    // Log results to notifications table
-    try {
-      await supabase.from("notifications").insert({
-        city_id,
-        type,
-        recipient_count: totalSent,
-        success_count: totalSent - errors.length,
-        error_count: errors.length,
-        sent_at: new Date().toISOString(),
-        metadata: {
-          user_ids_specified: user_ids ?? null,
-          batch_count: batches.length,
-          errors: errors.length > 0 ? errors : null,
-        },
+    // Batch in groups of 100 (Expo limit)
+    const results = [];
+    for (let i = 0; i < messages.length; i += 100) {
+      const batch = messages.slice(i, i + 100);
+      const res = await fetch(EXPO_PUSH_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(batch),
       });
-    } catch (logErr) {
-      console.error("Failed to log notification to DB:", logErr);
+      results.push(await res.json());
     }
 
-    return new Response(
-      JSON.stringify({
-        message: "Notifications sent",
-        sent: totalSent,
-        batches: batches.length,
-        errors: errors.length > 0 ? errors : undefined,
-      }),
-      { status: 200, headers: { "Content-Type": "application/json" } },
-    );
+    return new Response(JSON.stringify({ sent: messages.length, results }), {
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (err) {
-    console.error("Unexpected error in send-notifications:", err);
-    return new Response(
-      JSON.stringify({
-        error: err instanceof Error ? err.message : String(err),
-      }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
-    );
+    return new Response(JSON.stringify({ error: String(err) }), { status: 500 });
   }
 });

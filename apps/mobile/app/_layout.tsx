@@ -18,6 +18,7 @@ import {
 
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 
 async function handleAuthDeepLink(url: string) {
   const parsed = Linking.parse(url);
@@ -62,6 +63,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const segments = useSegments();
   const { session, setSession } = useAuthStore();
+  usePushNotifications();
 
   useEffect(() => {
     // Subscribe to auth state changes.
