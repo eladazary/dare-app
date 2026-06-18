@@ -24,6 +24,22 @@ import SolveReveal from '@/components/SolveReveal';
 import TauntModal from '@/components/TauntModal';
 import RescueModal from '@/components/RescueModal';
 import ExtraAttemptsModal from '@/components/ExtraAttemptsModal';
+import AnswerModal from '@/components/AnswerModal';
+
+// Level-based radius multiplier — higher level = must get closer
+const LEVEL_RADIUS_MULTIPLIER: Record<string, number> = {
+  wanderer:   1.00,  // Recruit  — full radius
+  scout:      0.80,  // Agent    — 80%
+  explorer:   0.60,  // Operative — 60%
+  chronicler: 0.40,  // Field Agent — 40%
+  keeper:     0.25,  // Handler  — 25%
+  legend:     0.15,  // Legend   — 15% (elite)
+};
+
+function effectiveSolveRadius(baseRadius: number, userLevel: string): number {
+  const mult = LEVEL_RADIUS_MULTIPLIER[userLevel] ?? 1.0;
+  return Math.max(5, Math.round(baseRadius * mult)); // min 5m
+}
 import { useRescueStore } from '@/stores/rescueStore';
 import { useLocation, useNearbyTraces, useGhostTrails, type NearbyTrace } from '@/hooks/useTraces';
 import { supabase } from '@/lib/supabase';
@@ -86,10 +102,21 @@ export default function MapScreen() {
   const [activeTrace, setActiveTrace] = useState<NearbyTrace | null>(null);
   const [attemptsLeft, setAttemptsLeft] = useState(3);
   const [showCamera, setShowCamera] = useState(false);
+  const [showAnswer, setShowAnswer] = useState(false);
   const [solveResult, setSolveResult] = useState<{ selfieUri: string; startedAt: number } | null>(null);
   const [showTaunt, setShowTaunt] = useState(false);
   const [showExtraAttempts, setShowExtraAttempts] = useState(false);
+  const [userLevel, setUserLevel] = useState('wanderer');
   const [seeding, setSeeding] = useState(false);
+
+  // Load user level for radius scaling
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase.from('users').select('level').eq('auth_id', user.id).single()
+        .then(({ data }) => { if (data?.level) setUserLevel(data.level); });
+    });
+  }, []);
   const { pendingRescue, setPendingRescue } = useRescueStore();
   const startedAtRef = useRef<number>(0);
 
@@ -108,7 +135,8 @@ export default function MapScreen() {
   }, [slideAnim]);
 
   const handleSubmit = useCallback(() => {
-    setShowCamera(true);
+    // Step 1: user must identify the place by name
+    setShowAnswer(true);
   }, []);
 
   const handleCapture = useCallback(async (selfieUri: string) => {
@@ -120,7 +148,7 @@ export default function MapScreen() {
       activeTrace.lat, activeTrace.lng
     );
 
-    if (distNow > activeTrace.solve_radius_meters) {
+    if (distNow > effectiveSolveRadius(activeTrace.solve_radius_meters, userLevel)) {
       const newLeft = Math.max(0, attemptsLeft - 1);
       setAttemptsLeft(newLeft);
       if (newLeft === 0) setShowExtraAttempts(true);
@@ -192,12 +220,16 @@ export default function MapScreen() {
     );
   }
 
+  const effRadius = activeTrace
+    ? effectiveSolveRadius(activeTrace.solve_radius_meters, userLevel)
+    : 30;
+
   const stage: TraceStage = activeTrace
     ? activeTrace.already_solved
       ? 'solved'
       : difficultyToStage(
           activeTrace.distance_meters,
-          activeTrace.solve_radius_meters,
+          effRadius,
           activeTrace.notify_radius_meters
         )
     : 'locked';
@@ -313,6 +345,24 @@ export default function MapScreen() {
           : <Text style={styles.devSeedText}>DEV: Seed traces here</Text>
         }
       </TouchableOpacity>
+
+      {/* Answer confirmation — must identify place before camera */}
+      {activeTrace && (
+        <AnswerModal
+          visible={showAnswer}
+          placeName={activeTrace.place_name ?? ''}
+          distanceMeters={Math.round(activeTrace.distance_meters)}
+          solveRadiusMeters={effRadius}
+          onCorrect={() => { setShowAnswer(false); setShowCamera(true); }}
+          onWrong={() => {
+            setShowAnswer(false);
+            const newLeft = Math.max(0, attemptsLeft - 1);
+            setAttemptsLeft(newLeft);
+            if (newLeft === 0) setShowExtraAttempts(true);
+          }}
+          onClose={() => setShowAnswer(false)}
+        />
+      )}
 
       {/* Camera overlay */}
       {showCamera && activeTrace && (
