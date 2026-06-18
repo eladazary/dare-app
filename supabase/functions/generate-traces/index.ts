@@ -87,7 +87,31 @@ const OVERPASS_MIRRORS = [
 ];
 
 async function fetchPois(lat: number, lng: number, radius: number): Promise<OsmPoi[]> {
-  const query = `[out:json][timeout:20];(node["historic"~"monument|memorial|statue|ruins|fort|castle|tower"](around:${radius},${lat},${lng});node["tourism"~"viewpoint|museum|artwork|monument|attraction"](around:${radius},${lat},${lng});node["amenity"~"fountain|clock|place_of_worship"](around:${radius},${lat},${lng});node["man_made"~"water_tower|lighthouse|tower|windmill"](around:${radius},${lat},${lng});node["natural"~"spring|peak"](around:${radius},${lat},${lng}););out body;`;
+  // Focus on places people actually want to find — trendy, visual, alive
+  const query = `[out:json][timeout:20];(
+node["tourism"="artwork"](around:${radius},${lat},${lng});
+node["tourism"="viewpoint"](around:${radius},${lat},${lng});
+node["amenity"="marketplace"](around:${radius},${lat},${lng});
+node["amenity"="fountain"](around:${radius},${lat},${lng});
+node["leisure"="playground"]["name"](around:${radius},${lat},${lng});
+node["leisure"="park"]["name"](around:${radius},${lat},${lng});
+node["shop"="bakery"]["name"](around:${radius},${lat},${lng});
+node["amenity"="cafe"]["name"]["outdoor_seating"="yes"](around:${radius},${lat},${lng});
+node["amenity"="bar"]["name"](around:${radius},${lat},${lng});
+node["amenity"="nightclub"]["name"](around:${radius},${lat},${lng});
+node["amenity"="theatre"]["name"](around:${radius},${lat},${lng});
+node["amenity"="cinema"]["name"](around:${radius},${lat},${lng});
+node["shop"="music"]["name"](around:${radius},${lat},${lng});
+node["shop"="books"]["name"](around:${radius},${lat},${lng});
+node["shop"="records"]["name"](around:${radius},${lat},${lng});
+node["amenity"="arts_centre"]["name"](around:${radius},${lat},${lng});
+node["building"="roof"]["name"](around:${radius},${lat},${lng});
+node["natural"="beach"]["name"](around:${radius},${lat},${lng});
+node["natural"="cliff"]["name"](around:${radius},${lat},${lng});
+node["man_made"="lighthouse"]["name"](around:${radius},${lat},${lng});
+node["man_made"="water_tower"]["name"](around:${radius},${lat},${lng});
+node["historic"="wayside_cross"]["name"](around:${radius},${lat},${lng});
+);out body;`;
 
   let lastError = "";
   for (const mirror of OVERPASS_MIRRORS) {
@@ -125,23 +149,25 @@ function poiContext(poi: OsmPoi): string {
 // ─────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `אתה יוצר רמזים למשחק חקר עירוני בשם Tracer.
-שחקנים מקבלים רמז מסתורי על מקום אמיתי, מנסים לפצח היכן הוא, ומגיעים לשם לצלם סלפי.
+שחקנים מקבלים רמז על מקום טרנדי בעיר, מפצחים אותו, והולכים לצלם שם סלפי.
+המקומות הם: קפה עם ווייב, ציור קיר, שוק, גג עם נוף, מסבאה, פארק חבוי, או כל מקום שאנשים בגיל 20-35 ירצו לגלות.
 
-חוקי הרמזים המושלמים:
-- אל תציין את שם המקום ישירות — לעולם לא
-- השתמש ב-[R:approaching]טקסט[/R] לעטוף 1-2 ביטויי מפתח שמתגלים כשהשחקן מתקרב
-- הרמז צריך להיות נפתר אבל לא טריוויאלי — חידה מספקת, לא תיאור מעורפל
-- כתוב בגוף ראשון, כאילו המקום עצמו מדבר
-- 2-4 משפטים לכל היותר
-- רמת קושי: easy = מפורסם/גלוי, medium = מוכר לתושבים, hard = דורש חשיבה
-- הרמזים חייבים להיות חכמים, שירותיים, ועם עומק תרבותי — לא גנריים
-- שלב אלמנטים היסטוריים, ספרותיים, או סנסוריים כשרלוונטי
-- כתוב בעברית בלבד
+חוקי ברזל:
+1. אל תזכיר את שם המקום לעולם
+2. מרקאפ חובה — בדיוק כך: [R:approaching]ביטוי מפתח[/R] ו-[R:close]ביטוי חושפני[/R]
+   שים לב: הסוגריים הם [ ו-] בלבד — לא " ולא ' אחריהם
+3. גוף ראשון — המקום מדבר
+4. 2-3 משפטים בלבד
+5. ווייב: מסתורי, חכם, קצת שובב — לא אנציקלופדיה
+6. עברית בלבד
 
-פרמט התשובה כ-JSON בלבד — אין טקסט לפני או אחרי:
+דוגמה נכונה:
+"אנשים מגיעים אליי בשביל הריח, [R:approaching]אבל נשארים בגלל האווירה[/R]. [R:close]הבציק שלי עשוי ידיים[/R] וכל בוקר מתחיל בי מחדש."
+
+פרמט JSON בלבד:
 {
-  "clue": "הרמז המלא עם מרקאפ [R:approaching] ו-[R:close]",
-  "hint": "רמז עזר בעברית — קצת יותר ישיר, ללא מרקאפ",
+  "clue": "הרמז",
+  "hint": "רמז ישיר יותר לחבר שעוזר — בלי מרקאפ",
   "difficulty": "easy"
 }`;
 
@@ -203,6 +229,21 @@ async function callLlm(userPrompt: string): Promise<string> {
 // Clue generation
 // ─────────────────────────────────────────────
 
+// Fixes common LLM markup mistakes:
+//   [R:approaching"]  →  [R:approaching]
+//   [R:close"]        →  [R:close]
+//   [/R"]             →  [/R]
+//   [R approaching]   →  [R:approaching]
+//   missing [/R]      →  appended
+function sanitizeClue(clue: string): string {
+  return clue
+    .replace(/\[R:(approaching|close)["']/gi, "[R:$1]")
+    .replace(/\[R\s+(approaching|close)\]/gi, "[R:$1]")
+    .replace(/\[\/R["']/g, "[/R]")
+    .replace(/\[r:(approaching|close)\]/gi, "[R:$1]")
+    .replace(/\[\/r\]/gi, "[/R]");
+}
+
 async function generateClue(
   poi: OsmPoi,
 ): Promise<{ clue: string; hint: string; difficulty: "easy" | "medium" | "hard" } | null> {
@@ -213,7 +254,7 @@ async function generateClue(
     const parsed = JSON.parse(jsonMatch[0]);
     if (!parsed.clue || !parsed.hint || !parsed.difficulty) return null;
     return {
-      clue: parsed.clue,
+      clue: sanitizeClue(parsed.clue),
       hint: parsed.hint,
       difficulty: parsed.difficulty as "easy" | "medium" | "hard",
     };
