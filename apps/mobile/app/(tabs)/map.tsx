@@ -26,14 +26,15 @@ import RescueModal from '@/components/RescueModal';
 import ExtraAttemptsModal from '@/components/ExtraAttemptsModal';
 import AnswerModal from '@/components/AnswerModal';
 
-// Level-based radius multiplier — higher level = must get closer
+// Level-based radius multiplier — beginners get MORE room to succeed (hook them),
+// veterans get less (mastery challenge)
 const LEVEL_RADIUS_MULTIPLIER: Record<string, number> = {
-  wanderer:   1.00,  // Recruit  — full radius
-  scout:      0.80,  // Agent    — 80%
-  explorer:   0.60,  // Operative — 60%
-  chronicler: 0.40,  // Field Agent — 40%
-  keeper:     0.25,  // Handler  — 25%
-  legend:     0.15,  // Legend   — 15% (elite)
+  wanderer:   5.0,  // Recruit   — 5x radius, very forgiving, feel like winners
+  scout:      3.0,  // Agent     — 3x, still easy
+  explorer:   1.5,  // Operative — 1.5x, getting real
+  chronicler: 1.0,  // Field Agent — base radius
+  keeper:     0.5,  // Handler   — half radius, must be precise
+  legend:     0.2,  // Legend    — 20%, standing right on it
 };
 
 function effectiveSolveRadius(baseRadius: number, userLevel: string): number {
