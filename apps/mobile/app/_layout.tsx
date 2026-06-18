@@ -103,7 +103,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const { preview } = useAuthStore.getState();
 
     if (session === undefined) return;
-    if (preview) return; // preview mode bypasses auth gate
 
     if (!session && !inOnboarding) {
       router.replace('/onboarding');
