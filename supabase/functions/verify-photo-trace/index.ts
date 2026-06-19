@@ -1,6 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
+const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+const OLLAMA_URL = Deno.env.get("OLLAMA_URL"); // e.g. http://192.168.1.x:11434 or https://xxxx.ngrok-free.app
+const OLLAMA_MODEL = Deno.env.get("OLLAMA_MODEL") ?? "llava:13b";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -8,6 +10,9 @@ const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, content-type",
 };
+
+const PHOTO_PROMPT =
+  "You are the referee for a city exploration game. A player was given a reference photo of a specific real-world detail and told to find and photograph that exact spot.\n\nDoes the player's submitted photo show the same physical detail, object, or spot as the reference?\n\nRules:\n- Same wall / door / texture / structure = MATCH (different angle or lighting is fine)\n- Similar-looking but clearly a different place = NO_MATCH\n- Something else entirely = NO_MATCH\n- Too blurry or dark to tell = NO_MATCH\n\nFirst line must be exactly: MATCH or NO_MATCH\nSecond line: one short sentence explaining what you saw.";
 
 function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000;
@@ -31,10 +36,47 @@ async function urlToBase64(url: string): Promise<{ data: string; mediaType: stri
   return { data, mediaType: ct };
 }
 
-async function comparePhotos(
+// ── Ollama (local vision model) ──────────────────────────────────────────────
+async function compareWithOllama(
   refUrl: string,
   submitUrl: string,
 ): Promise<{ match: boolean; detail: string }> {
+  const [ref, sub] = await Promise.all([urlToBase64(refUrl), urlToBase64(submitUrl)]);
+
+  // Ollama /api/generate supports images as a base64 array
+  const res = await fetch(`${OLLAMA_URL}/api/generate`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model: OLLAMA_MODEL,
+      prompt: PHOTO_PROMPT,
+      images: [ref.data, sub.data], // [reference, submission]
+      stream: false,
+    }),
+    signal: AbortSignal.timeout(30000),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Ollama error ${res.status}: ${err}`);
+  }
+
+  const json = await res.json();
+  const text: string = json.response ?? "";
+  const lines = text.trim().split("\n");
+  const verdict = lines[0].trim().toUpperCase();
+  const detail = lines.slice(1).join(" ").trim() || text.trim();
+
+  return { match: verdict === "MATCH", detail };
+}
+
+// ── Anthropic Claude Haiku (cloud fallback) ──────────────────────────────────
+async function compareWithAnthropic(
+  refUrl: string,
+  submitUrl: string,
+): Promise<{ match: boolean; detail: string }> {
+  if (!ANTHROPIC_API_KEY) throw new Error("No ANTHROPIC_API_KEY set");
+
   const [ref, sub] = await Promise.all([urlToBase64(refUrl), urlToBase64(submitUrl)]);
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -47,30 +89,16 @@ async function comparePhotos(
     body: JSON.stringify({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 120,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: "You are the referee for a city exploration game. A player was given a reference photo of a specific real-world detail and told to find and photograph that exact spot.\n\nReference photo (the target they needed to find):",
-            },
-            {
-              type: "image",
-              source: { type: "base64", media_type: ref.mediaType, data: ref.data },
-            },
-            { type: "text", text: "Player's submitted photo:" },
-            {
-              type: "image",
-              source: { type: "base64", media_type: sub.mediaType, data: sub.data },
-            },
-            {
-              type: "text",
-              text: "Does the player's photo show the same physical detail, object, or spot as the reference?\n\nRules:\n- Same wall / door / texture / structure = MATCH (different angle or lighting is fine)\n- Similar-looking but clearly a different place = NO_MATCH\n- Something else entirely = NO_MATCH\n- Too blurry or dark to tell = NO_MATCH\n\nFirst line must be exactly: MATCH or NO_MATCH\nSecond line: one short sentence explaining what you saw.",
-            },
-          ],
-        },
-      ],
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: "Reference photo (the target they needed to find):" },
+          { type: "image", source: { type: "base64", media_type: ref.mediaType, data: ref.data } },
+          { type: "text", text: "Player's submitted photo:" },
+          { type: "image", source: { type: "base64", media_type: sub.mediaType, data: sub.data } },
+          { type: "text", text: PHOTO_PROMPT },
+        ],
+      }],
     }),
   });
 
@@ -86,6 +114,12 @@ async function comparePhotos(
   const detail = lines.slice(1).join(" ").trim() || text.trim();
 
   return { match: verdict === "MATCH", detail };
+}
+
+function comparePhotos(refUrl: string, submitUrl: string) {
+  // Prefer local Ollama when available — zero cost, private
+  if (OLLAMA_URL) return compareWithOllama(refUrl, submitUrl);
+  return compareWithAnthropic(refUrl, submitUrl);
 }
 
 Deno.serve(async (req) => {
@@ -138,7 +172,7 @@ Deno.serve(async (req) => {
     return json({ valid: true, reason: "success", distance_m: Math.round(distM) });
   } catch (e) {
     console.error("verify-photo-trace error:", e);
-    // On unexpected errors, don't burn the user's attempt — return a special code
+    // On unexpected errors, don't burn the user's attempt
     return json({ valid: false, reason: "server_error", detail: String(e) }, 500);
   }
 });
