@@ -104,6 +104,8 @@ export default function MapScreen() {
   const mapRef = useRef<MapView>(null);
   const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
 
+  const [publicUserId, setPublicUserId] = useState<string | null>(null);
+
   const { location, error: locationError, granted } = useLocation();
   const { data: traces = [], isLoading, refetch } = useNearbyTraces(location);
   const { data: ghostTrails = [] } = useGhostTrails(location);
@@ -111,7 +113,6 @@ export default function MapScreen() {
 
   const [activeTrace, setActiveTrace] = useState<NearbyTrace | null>(null);
   const [attemptsLeft, setAttemptsLeft] = useState(3);
-  const [publicUserId, setPublicUserId] = useState<string | null>(null);
   const [showCamera, setShowCamera] = useState(false);
   const [showAnswer, setShowAnswer] = useState(false);
   const [solveResult, setSolveResult] = useState<{ selfieUri: string; startedAt: number } | null>(null);
@@ -121,6 +122,8 @@ export default function MapScreen() {
   const [showExtraAttempts, setShowExtraAttempts] = useState(false);
   const [userLevel, setUserLevel] = useState('wanderer');
   const [seeding, setSeeding] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [failReason, setFailReason] = useState<'gps_fail' | 'photo_fail' | null>(null);
 
   // Load user level + public ID for radius scaling and fog of war
   useEffect(() => {
@@ -164,61 +167,120 @@ export default function MapScreen() {
   const handleCapture = useCallback(async (selfieUri: string) => {
     if (!activeTrace || !location) return;
     setShowCamera(false);
+    setFailReason(null);
 
-    const distNow = getDistance(
-      location.lat, location.lng,
-      activeTrace.lat, activeTrace.lng
-    );
+    // ── Step 1: GPS gate (instant, client-side) ──────────────────────────────
+    const distNow = getDistance(location.lat, location.lng, activeTrace.lat, activeTrace.lng);
+    const effRadius = effectiveSolveRadius(activeTrace.solve_radius_meters, userLevel);
 
-    if (distNow > effectiveSolveRadius(activeTrace.solve_radius_meters, userLevel)) {
+    const burnAttempt = async (reason: 'gps_fail' | 'photo_fail') => {
       const newLeft = Math.max(0, attemptsLeft - 1);
       setAttemptsLeft(newLeft);
-      if (newLeft === 0) setShowExtraAttempts(true);
-      // Last attempt used — request rescue from followers
+      setFailReason(reason);
+
+      // Last attempt used — trigger rescue request
       if (newLeft === 1) {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          const { data: myUser } = await supabase
-            .from('users')
-            .select('id')
-            .eq('auth_id', user.id)
-            .single();
+          const { data: myUser } = await supabase.from('users').select('id').eq('auth_id', user.id).single();
           if (myUser) {
-            await supabase.rpc('request_rescue', {
-              p_trace_id: activeTrace.id,
-              p_rescued_user_id: myUser.id,
-            });
+            await supabase.rpc('request_rescue', { p_trace_id: activeTrace.id, p_rescued_user_id: myUser.id });
           }
         }
       }
+
+      // Exhausted — break streak, show purchase modal
+      if (newLeft === 0) {
+        if (publicUserId) {
+          await supabase.rpc('record_trace_failure', { p_trace_id: activeTrace.id, p_user_id: publicUserId });
+        }
+        setShowExtraAttempts(true);
+      }
+
+      // Clear the fail reason after 3s so the card resets
+      setTimeout(() => setFailReason(null), 3000);
+    };
+
+    if (distNow > effRadius) {
+      await burnAttempt('gps_fail');
       return;
     }
 
-    // Write solve to DB using public.users.id (not auth.uid)
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: publicUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('auth_id', user.id)
-        .single();
+    // ── Step 2: Upload selfie → photo gate (server-side via edge function) ───
+    setVerifying(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
 
-      if (publicUser) {
-        const elapsed = Math.round((Date.now() - startedAtRef.current) / 1000);
-        await supabase.from('trace_solves').upsert({
-          trace_id: activeTrace.id,
-          user_id: publicUser.id,
-          attempts_used: activeTrace.max_attempts - attemptsLeft + 1,
-          time_to_solve_seconds: elapsed,
-          selfie_url: selfieUri,
-        }, { onConflict: 'trace_id,user_id' });
+      // Upload selfie to storage
+      const filename = `submissions/${activeTrace.id}_${Date.now()}.jpg`;
+      const formData = new FormData();
+      formData.append('file', { uri: selfieUri, name: filename, type: 'image/jpeg' } as unknown as Blob);
+
+      const uploadRes = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/trace-photos/${filename}`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'x-upsert': 'false' }, body: formData }
+      );
+
+      let selfiePublicUrl = selfieUri; // fallback to local uri if upload fails (GPS-only validation)
+      if (uploadRes.ok) {
+        selfiePublicUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/trace-photos/${filename}`;
       }
-    }
 
-    Animated.timing(slideAnim, { toValue: SCREEN_H, duration: 250, useNativeDriver: true }).start();
-    setSolveResult({ selfieUri, startedAt: startedAtRef.current });
-    refetchZones();
-  }, [activeTrace, location, attemptsLeft]);
+      // Call verify-photo-trace edge function
+      const verifyRes = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/verify-photo-trace`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            trace_id: activeTrace.id,
+            selfie_url: selfiePublicUrl,
+            user_lat: location.lat,
+            user_lng: location.lng,
+          }),
+        }
+      );
+
+      const verifyJson = await verifyRes.json();
+
+      // Server errors don't burn attempts (don't punish for network issues)
+      if (verifyJson.reason === 'server_error') {
+        console.warn('Verification server error — allowing solve by GPS only:', verifyJson.detail);
+      } else if (!verifyJson.valid) {
+        await burnAttempt(verifyJson.reason === 'gps_fail' ? 'gps_fail' : 'photo_fail');
+        return;
+      }
+
+      // ── Step 3: Record solve ───────────────────────────────────────────────
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: publicUser } = await supabase.from('users').select('id').eq('auth_id', user.id).single();
+        if (publicUser) {
+          const attemptsUsed = activeTrace.max_attempts - attemptsLeft + 1;
+          const elapsed = Math.round((Date.now() - startedAtRef.current) / 1000);
+
+          // XP decay: attempt 1 = full, 2 = 75%, 3 = 50%
+          const decayFactor = attemptsUsed === 1 ? 1.0 : attemptsUsed === 2 ? 0.75 : 0.5;
+          setSolveMultiplier(prev => Math.max(0.5, Math.round(prev * decayFactor * 10) / 10));
+
+          await supabase.from('trace_solves').upsert({
+            trace_id: activeTrace.id,
+            user_id: publicUser.id,
+            attempts_used: attemptsUsed,
+            time_to_solve_seconds: elapsed,
+            selfie_url: selfiePublicUrl,
+          }, { onConflict: 'trace_id,user_id' });
+        }
+      }
+
+      Animated.timing(slideAnim, { toValue: SCREEN_H, duration: 250, useNativeDriver: true }).start();
+      setSolveResult({ selfieUri: selfiePublicUrl, startedAt: startedAtRef.current });
+      refetchZones();
+    } finally {
+      setVerifying(false);
+    }
+  }, [activeTrace, location, attemptsLeft, userLevel, publicUserId, slideAnim, refetchZones]);
 
   const handleContinue = useCallback(() => {
     setSolveResult(null);
@@ -277,41 +339,31 @@ export default function MapScreen() {
           longitudeDelta: 0.012,
         }}
       >
-        {/* Trace zones — show search area only, no exact location */}
+        {/* Trace zones */}
         {traces.filter(t => !t.already_solved && diffFilter.has(t.difficulty)).map((trace) => {
           const isActive = trace.distance_meters <= trace.notify_radius_meters;
           const col = DIFF_COLOR[trace.difficulty] ?? COLORS.amber;
           const visualRadius = { easy: 80, medium: 120, hard: 160, legendary: 200 }[trace.difficulty] ?? 100;
           return (
             <React.Fragment key={trace.id}>
-              {/* Zone circle — tap anywhere inside opens the trace */}
               <Circle
                 center={{ latitude: trace.lat, longitude: trace.lng }}
                 radius={visualRadius}
-                fillColor={isActive ? `${col}18` : 'rgba(138,138,138,0.06)'}
-                strokeColor={isActive ? col : 'rgba(138,138,138,0.25)'}
-                strokeWidth={isActive ? 2 : 1}
-                onPress={() => openTrace(trace)}
+                fillColor={isActive ? `${col}15` : 'rgba(138,138,138,0.05)'}
+                strokeColor={isActive ? col : `${col}50`}
+                strokeWidth={isActive ? 1.5 : 1}
               />
-              {/* Small difficulty label floating at zone edge — not center */}
+              {/* Minimal pulsing dot — no text label to reduce clutter */}
               <Marker
-                coordinate={{
-                  latitude: trace.lat + (visualRadius / 111320) * 0.7,
-                  longitude: trace.lng,
-                }}
+                coordinate={{ latitude: trace.lat, longitude: trace.lng }}
                 onPress={() => openTrace(trace)}
-                anchor={{ x: 0.5, y: 1 }}
+                anchor={{ x: 0.5, y: 0.5 }}
                 tracksViewChanges={false}
               >
-                <View style={styles.chipWrapper}>
-                  <View style={[styles.chip, { borderColor: col }, isActive && { backgroundColor: col }]}>
-                    <Text style={[styles.chipDot, { color: isActive ? COLORS.navy : col }]}>●</Text>
-                    <Text style={[styles.chipLabel, { color: isActive ? COLORS.navy : col }]}>
-                      {trace.difficulty.toUpperCase()}
-                      {(trace.xp_multiplier ?? 1) > 1 ? ` ${trace.xp_multiplier}×` : ''}
-                    </Text>
-                  </View>
-                  <View style={[styles.chipTip, { borderTopColor: isActive ? col : col + '80' }]} />
+                <View style={[styles.traceDot, isActive && { backgroundColor: col, borderColor: col }]}>
+                  {(trace.xp_multiplier ?? 1) > 1 && (
+                    <Text style={styles.traceDotMult}>{trace.xp_multiplier}×</Text>
+                  )}
                 </View>
               </Marker>
             </React.Fragment>
@@ -354,6 +406,7 @@ export default function MapScreen() {
       {/* HUD overlay */}
       <SafeAreaView style={styles.hud} edges={['top']} pointerEvents="box-none">
         <View style={styles.hudRow}>
+          {/* Left — trace count */}
           <TouchableOpacity
             style={styles.hudLeft}
             onLongPress={() => router.push('/admin/create-trace')}
@@ -365,22 +418,46 @@ export default function MapScreen() {
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.recenterBtn}
-            onPress={() =>
-              mapRef.current?.animateToRegion(
-                {
-                  latitude: location.lat,
-                  longitude: location.lng,
-                  latitudeDelta: 0.008,
-                  longitudeDelta: 0.008,
-                },
-                400
-              )
-            }
-          >
-            <Text style={styles.recenterIcon}>◎</Text>
-          </TouchableOpacity>
+          {/* Right — recenter + filters stacked */}
+          <View style={styles.rightCol}>
+            <TouchableOpacity
+              style={styles.recenterBtn}
+              onPress={() =>
+                mapRef.current?.animateToRegion({
+                  latitude: location.lat, longitude: location.lng,
+                  latitudeDelta: 0.008, longitudeDelta: 0.008,
+                }, 400)
+              }
+            >
+              <Text style={styles.recenterIcon}>◎</Text>
+            </TouchableOpacity>
+
+            {/* Filters stacked vertically below the circle button */}
+            <View style={styles.filterCol}>
+              {(['easy','medium','hard','legendary'] as const).map(d => {
+                const col = DIFF_COLOR[d];
+                const active = diffFilter.has(d);
+                return (
+                  <TouchableOpacity
+                    key={d}
+                    style={[styles.filterChip, { borderColor: col }, active && { backgroundColor: col }]}
+                    onPress={() => {
+                      setDiffFilter(prev => {
+                        const next = new Set(prev);
+                        if (next.has(d) && next.size > 1) next.delete(d);
+                        else next.add(d);
+                        return next;
+                      });
+                    }}
+                  >
+                    <Text style={[styles.filterChipText, { color: active ? COLORS.navy : col }]}>
+                      {d === 'legendary' ? 'LEG' : d.slice(0,3).toUpperCase()}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
         </View>
 
         {isLoading && (
@@ -389,33 +466,6 @@ export default function MapScreen() {
             <Text style={styles.scanningText}>SCANNING AREA...</Text>
           </View>
         )}
-
-        {/* Difficulty filter chips */}
-        <View style={styles.filterRow}>
-          {(['easy','medium','hard','legendary'] as const).map(d => {
-            const col = DIFF_COLOR[d];
-            const active = diffFilter.has(d);
-            return (
-              <TouchableOpacity
-                key={d}
-                style={[styles.filterChip, { borderColor: col }, active && { backgroundColor: col }]}
-                onPress={() => {
-                  setDiffFilter(prev => {
-                    const next = new Set(prev);
-                    if (next.has(d) && next.size > 1) next.delete(d);
-                    else next.add(d);
-                    return next;
-                  });
-                }}
-              >
-                <Text style={[styles.filterChipText, { color: active ? COLORS.navy : col }]}>
-                  {d.toUpperCase()}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
       </SafeAreaView>
 
       {/* DEV: always-visible seed button — remove before production */}
@@ -527,6 +577,26 @@ export default function MapScreen() {
             <TouchableOpacity style={styles.panelHandle} onPress={closeTrace}>
               <View style={styles.handleBar} />
             </TouchableOpacity>
+
+            {/* Failure toast */}
+            {failReason && (
+              <View style={[styles.failToast, failReason === 'photo_fail' && styles.failToastPhoto]}>
+                <Text style={styles.failToastText}>
+                  {failReason === 'gps_fail'
+                    ? '📍 Too far — keep searching'
+                    : '✗ Wrong spot — photo doesn\'t match'}
+                </Text>
+              </View>
+            )}
+
+            {/* Verifying overlay */}
+            {verifying && (
+              <View style={styles.verifyingOverlay}>
+                <ActivityIndicator color={COLORS.amber} size="large" />
+                <Text style={styles.verifyingText}>Verifying your spot...</Text>
+              </View>
+            )}
+
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetContent}>
               <TraceCard
                 id={activeTrace.id}
@@ -559,34 +629,29 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.navy,
   },
-  filterRow: {
-    flexDirection: 'row', gap: 6, paddingHorizontal: 16,
-    marginTop: 8, justifyContent: 'flex-start',
+  rightCol: {
+    alignItems: 'center', gap: 8,
+  },
+  filterCol: {
+    alignItems: 'center', gap: 5,
   },
   filterChip: {
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: 14, borderWidth: 1.5,
-    backgroundColor: 'rgba(10,10,10,0.8)',
+    width: 44, paddingVertical: 5,
+    borderRadius: 8, borderWidth: 1.5,
+    backgroundColor: 'rgba(10,10,10,0.88)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  filterChipText: { fontFamily: FONTS.monoBold, fontSize: 9, letterSpacing: 1 },
-  chipWrapper: {
-    alignItems: 'center',
+  filterChipText: { fontFamily: FONTS.monoBold, fontSize: 8, letterSpacing: 0.5 },
+  traceDot: {
+    width: 14, height: 14, borderRadius: 7,
+    backgroundColor: 'rgba(138,138,138,0.4)',
+    borderWidth: 2, borderColor: 'rgba(138,138,138,0.6)',
   },
-  chip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: 20, borderWidth: 1.5,
-    backgroundColor: 'rgba(10,10,10,0.85)',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4, shadowRadius: 4, elevation: 4,
-  },
-  chipDot: { fontSize: 7 },
-  chipLabel: { fontFamily: FONTS.monoBold, fontSize: 10, letterSpacing: 1 },
-  chipTip: {
-    width: 0, height: 0,
-    borderLeftWidth: 5, borderRightWidth: 5,
-    borderTopWidth: 6,
-    borderLeftColor: 'transparent', borderRightColor: 'transparent',
+  traceDotMult: {
+    position: 'absolute', top: -10, right: -8,
+    fontFamily: FONTS.monoBold, fontSize: 8, color: COLORS.amber,
+    backgroundColor: 'rgba(10,10,10,0.9)',
+    paddingHorizontal: 2, borderRadius: 3,
   },
   centerFill: {
     flex: 1,
@@ -618,7 +683,7 @@ const styles = StyleSheet.create({
   hudRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
+    alignItems: 'flex-start',
     marginHorizontal: 16,
     marginTop: 8,
   },
@@ -698,6 +763,31 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 2,
     backgroundColor: COLORS.navyLight,
+  },
+  failToast: {
+    marginHorizontal: 16, marginBottom: 8,
+    backgroundColor: 'rgba(255,45,85,0.15)',
+    borderWidth: 1, borderColor: COLORS.red,
+    borderRadius: 8, paddingVertical: 10, paddingHorizontal: 14,
+    alignItems: 'center',
+  },
+  failToastPhoto: {
+    backgroundColor: 'rgba(123,94,167,0.15)',
+    borderColor: COLORS.classified,
+  },
+  failToastText: {
+    fontFamily: FONTS.monoBold, fontSize: 11,
+    color: COLORS.ghost, letterSpacing: 0.5,
+  },
+  verifyingOverlay: {
+    position: 'absolute', top: 48, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(10,10,10,0.85)',
+    alignItems: 'center', justifyContent: 'center', gap: 12,
+    zIndex: 10, borderRadius: 16,
+  },
+  verifyingText: {
+    fontFamily: FONTS.mono, fontSize: 12,
+    color: COLORS.amber, letterSpacing: 1.5,
   },
   sheetContent: {
     paddingBottom: 48,
