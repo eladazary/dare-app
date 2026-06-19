@@ -412,8 +412,9 @@ export default function MapScreen() {
       {/* Camera overlay */}
       {showCamera && activeTrace && (
         <SelfieCapture
+          referencePhotoUrl={activeTrace.reference_photo_url}
           distanceMeters={activeTrace.distance_meters}
-          solveRadius={activeTrace.solve_radius_meters}
+          solveRadius={effRadius}
           onCapture={handleCapture}
           onCancel={() => setShowCamera(false)}
         />
@@ -424,8 +425,10 @@ export default function MapScreen() {
         <SolveReveal
           placeName={activeTrace.place_name ?? 'Unknown place'}
           difficulty={activeTrace.difficulty}
+          referencePhotoUrl={activeTrace.reference_photo_url ?? null}
           selfieUri={solveResult.selfieUri}
           timeSeconds={Math.round((Date.now() - solveResult.startedAt) / 1000)}
+          caption={activeTrace.photo_caption ?? activeTrace.clue ?? null}
           xpMultiplier={solveMultiplier}
           onTaunt={() => setShowTaunt(true)}
           onContinue={handleContinue}
@@ -483,6 +486,7 @@ export default function MapScreen() {
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetContent}>
               <TraceCard
                 id={activeTrace.id}
+                referencePhotoUrl={activeTrace.reference_photo_url}
                 clue={parseClue(activeTrace.clue)}
                 difficulty={activeTrace.difficulty as any}
                 attemptsLeft={attemptsLeft}

@@ -1,15 +1,10 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Animated,
+  View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator,
 } from 'react-native';
 import { COLORS } from '@/constants/colors';
 import { FONTS } from '@/constants/typography';
 
-// Below 300m: exact. Above: bucketed.
 export function formatDistance(meters: number): string {
   if (meters < 300) return `${Math.round(meters)}m`;
   if (meters < 600) return '~400m';
@@ -20,42 +15,27 @@ export function formatDistance(meters: number): string {
   return '2km+';
 }
 
-// Legacy: parse clue string into plain text (strips [R:...] markup)
+// Legacy compat — strips old [R:...] markup
 export function parseClue(raw: string): string {
   return raw.replace(/\[R:[^\]]*\](.*?)\[\/R\]/gs, '$1').trim();
 }
 
-// Keep for type compat in map.tsx
 export type TraceStage = 'locked' | 'approaching' | 'close' | 'solved';
 export type ClueSegment = { type: 'text'; content: string };
-
-function useCountdown(expiresAt?: string | null) {
-  const [secsLeft, setSecsLeft] = React.useState<number | null>(null);
-  React.useEffect(() => {
-    if (!expiresAt) return;
-    const calc = () => Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
-    setSecsLeft(calc());
-    const id = setInterval(() => setSecsLeft(calc()), 1000);
-    return () => clearInterval(id);
-  }, [expiresAt]);
-  return secsLeft;
-}
-
-function formatCountdown(secs: number): string {
-  if (secs < 60) return '< 1m';
-  if (secs < 3600) { const m = Math.floor(secs / 60), s = secs % 60; return `${m}m ${s}s`; }
-  const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60);
-  return `${h}h ${m}m`;
-}
 
 const DIFFICULTY_COLOR: Record<string, string> = {
   easy: COLORS.green, medium: COLORS.amber,
   hard: COLORS.classified, legendary: COLORS.purple,
 };
 
+const DIFFICULTY_LABEL: Record<string, string> = {
+  easy: 'EASY', medium: 'MEDIUM', hard: 'HARD', legendary: 'LEGENDARY',
+};
+
 interface TraceCardProps {
   id: string;
-  clue: string;                 // plain string — no markup
+  referencePhotoUrl?: string | null;
+  clue?: string;
   difficulty: 'easy' | 'medium' | 'hard' | 'legendary';
   attemptsLeft: number;
   maxAttempts: number;
@@ -64,63 +44,81 @@ interface TraceCardProps {
   expiresAt?: string | null;
   xpMultiplier?: number;
   onSubmit?: () => void;
-  // Legacy compat
+  // legacy compat
   segments?: ClueSegment[];
 }
 
 export default function TraceCard({
-  id, clue, difficulty, attemptsLeft, maxAttempts,
+  id, referencePhotoUrl, clue, difficulty, attemptsLeft, maxAttempts,
   stage, distanceMeters, expiresAt, xpMultiplier = 1, onSubmit,
 }: TraceCardProps) {
-  const isSolved = stage === 'solved';
+  const isSolved  = stage === 'solved';
   const canSubmit = stage === 'close' || stage === 'solved';
-  const secsLeft = useCountdown(expiresAt);
-  const isUrgent = secsLeft !== null && secsLeft < 1800;
+  const col       = DIFFICULTY_COLOR[difficulty] ?? COLORS.amber;
+  const [imgLoading, setImgLoading] = React.useState(true);
 
   return (
     <View style={styles.card}>
-      {!isSolved && (
-        <View style={styles.stamp} pointerEvents="none">
-          <Text style={styles.stampText}>CLASSIFIED</Text>
-        </View>
-      )}
-
-      {/* Distance badge */}
-      {distanceMeters != null && !isSolved && (
-        <View style={[styles.distanceBadge, stage === 'close' && styles.distanceBadgeClose]}>
-          <Text style={[styles.distanceBadgeText, stage === 'close' && styles.distanceBadgeTextClose]}>
-            📍 {formatDistance(distanceMeters)} away
-          </Text>
-        </View>
-      )}
-
       {/* Header */}
-      <View style={styles.headerRow}>
-        <Text style={styles.traceId}>TRACE #{id.slice(-4).toUpperCase()}</Text>
-      </View>
-
-      {/* Difficulty + TTL + multiplier */}
-      <View style={styles.difficultyRow}>
-        <View style={[styles.difficultyDot, { backgroundColor: DIFFICULTY_COLOR[difficulty] }]} />
-        <Text style={[styles.difficultyText, { color: DIFFICULTY_COLOR[difficulty] }]}>
-          {difficulty.toUpperCase()}
-        </Text>
-        {secsLeft !== null && secsLeft > 0 && (
-          <Text style={[styles.ttlBadge, isUrgent && styles.ttlUrgent]}>
-            ⏱ {formatCountdown(secsLeft)}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <View style={[styles.diffDot, { backgroundColor: col }]} />
+          <Text style={[styles.diffLabel, { color: col }]}>
+            {DIFFICULTY_LABEL[difficulty]}
+          </Text>
+          {xpMultiplier > 1 && (
+            <Text style={styles.multBadge}>{xpMultiplier}× XP</Text>
+          )}
+        </View>
+        {distanceMeters != null && !isSolved && (
+          <Text style={[styles.distText, canSubmit && styles.distTextClose]}>
+            📍 {formatDistance(distanceMeters)}
           </Text>
         )}
-        {xpMultiplier > 1 && (
-          <Text style={styles.multiplierBadge}>{xpMultiplier}× XP</Text>
+      </View>
+
+      {/* Reference photo — the trace */}
+      <View style={styles.photoContainer}>
+        {referencePhotoUrl ? (
+          <>
+            {imgLoading && (
+              <View style={styles.photoLoading}>
+                <ActivityIndicator color={COLORS.amber} />
+              </View>
+            )}
+            <Image
+              source={{ uri: referencePhotoUrl }}
+              style={[styles.photo, imgLoading && { opacity: 0 }]}
+              resizeMode="cover"
+              onLoadEnd={() => setImgLoading(false)}
+            />
+            {/* Instruction overlay */}
+            {!isSolved && (
+              <View style={styles.photoOverlay}>
+                <Text style={styles.photoInstruction}>Find this exact spot</Text>
+              </View>
+            )}
+            {isSolved && (
+              <View style={[styles.photoOverlay, styles.photoOverlaySolved]}>
+                <Text style={styles.solvedBadgeText}>✓ FOUND</Text>
+              </View>
+            )}
+          </>
+        ) : (
+          <View style={styles.photoPlaceholder}>
+            <Text style={styles.photoPlaceholderIcon}>📷</Text>
+            <Text style={styles.photoPlaceholderText}>Photo loading...</Text>
+          </View>
         )}
       </View>
 
-      <View style={styles.divider} />
-
-      {/* Clue — full text, no hiding */}
-      <Text style={styles.clueText}>{clue}</Text>
-
-      <View style={styles.divider} />
+      {/* Context clue (shown after solving or as optional hint) */}
+      {clue && isSolved && (
+        <View style={styles.captionBox}>
+          <Text style={styles.captionLabel}>ABOUT THIS PLACE</Text>
+          <Text style={styles.captionText}>{clue}</Text>
+        </View>
+      )}
 
       {/* Footer */}
       <View style={styles.footer}>
@@ -128,118 +126,118 @@ export default function TraceCard({
           {Array.from({ length: maxAttempts }).map((_, i) => (
             <View key={i} style={[
               styles.attemptDot,
-              { backgroundColor: i < attemptsLeft ? COLORS.redaction : COLORS.creamDim },
+              { backgroundColor: i < attemptsLeft ? col : COLORS.navyLight },
             ]} />
           ))}
           <Text style={styles.attemptsLabel}>
-            {isSolved ? 'SOLVED' : `${attemptsLeft} LEFT`}
+            {isSolved ? 'FOUND' : `${attemptsLeft} attempts left`}
           </Text>
         </View>
 
         {!isSolved && (
           <TouchableOpacity
-            style={[styles.submitBtn, !canSubmit && styles.submitBtnDisabled]}
+            style={[styles.submitBtn, { backgroundColor: canSubmit ? col : COLORS.navyLight }]}
             onPress={onSubmit}
             disabled={!canSubmit}
-            activeOpacity={0.8}
           >
-            <Text style={styles.submitBtnText}>
-              {canSubmit ? 'SUBMIT PROOF →' : 'GET CLOSER'}
+            <Text style={[styles.submitBtnText, { color: canSubmit ? COLORS.navy : COLORS.concrete }]}>
+              {canSubmit ? 'I found it →' : 'Get closer'}
             </Text>
           </TouchableOpacity>
         )}
-
-        {isSolved && (
-          <View style={styles.solvedBadge}>
-            <Text style={styles.solvedText}>✓ CONFIRMED</Text>
-          </View>
-        )}
       </View>
 
-      {/* Walk closer hint when not in range */}
       {!isSolved && stage === 'locked' && (
-        <Text style={styles.revealHint}>🚶 Walk closer to submit proof</Text>
+        <Text style={styles.walkHint}>Walk closer to unlock</Text>
       )}
-
-      <Text style={styles.locationClassified}>LOCATION CLASSIFIED</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: COLORS.cream, borderRadius: 4, padding: 20,
+    backgroundColor: COLORS.navyMid, borderRadius: 16,
     marginHorizontal: 20, overflow: 'hidden',
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4, shadowRadius: 12, elevation: 8,
+    shadowOpacity: 0.5, shadowRadius: 12, elevation: 8,
   },
-  stamp: {
-    position: 'absolute', top: 18, right: 16,
-    borderWidth: 2, borderColor: COLORS.classified, borderRadius: 2,
-    paddingHorizontal: 6, paddingVertical: 2,
-    transform: [{ rotate: '-12deg' }], zIndex: 10,
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10,
   },
-  stampText: {
-    fontFamily: FONTS.monoBold, fontSize: 9,
-    color: COLORS.classified, letterSpacing: 2, opacity: 0.85,
-  },
-  distanceBadge: {
-    backgroundColor: COLORS.redaction, borderRadius: 6,
-    paddingHorizontal: 12, paddingVertical: 6,
-    alignSelf: 'flex-start', marginBottom: 12,
-  },
-  distanceBadgeClose: { backgroundColor: COLORS.green },
-  distanceBadgeText: {
-    fontFamily: FONTS.monoBold, fontSize: 12, color: COLORS.cream, letterSpacing: 0.5,
-  },
-  distanceBadgeTextClose: { color: COLORS.navy },
-  headerRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 8,
-  },
-  traceId: {
-    fontFamily: FONTS.mono, fontSize: 10, color: COLORS.redaction,
-    letterSpacing: 2, opacity: 0.5,
-  },
-  difficultyRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14,
-  },
-  difficultyDot: { width: 6, height: 6, borderRadius: 3 },
-  difficultyText: { fontFamily: FONTS.monoBold, fontSize: 10, letterSpacing: 1.5 },
-  ttlBadge: { fontFamily: FONTS.monoBold, fontSize: 9, color: COLORS.amber, letterSpacing: 1, marginLeft: 6 },
-  ttlUrgent: { color: COLORS.classified },
-  multiplierBadge: {
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  diffDot: { width: 8, height: 8, borderRadius: 4 },
+  diffLabel: { fontFamily: FONTS.monoBold, fontSize: 11, letterSpacing: 2 },
+  multBadge: {
     fontFamily: FONTS.monoBold, fontSize: 9, color: COLORS.navy,
-    backgroundColor: COLORS.amber, paddingHorizontal: 5, paddingVertical: 1,
-    borderRadius: 3, marginLeft: 6, letterSpacing: 0.5,
+    backgroundColor: COLORS.amber, paddingHorizontal: 6, paddingVertical: 2,
+    borderRadius: 4, letterSpacing: 0.5,
   },
-  divider: { height: 1, backgroundColor: COLORS.creamDim, marginVertical: 14 },
-  clueText: {
-    fontFamily: FONTS.challengeItalic, fontSize: 16,
-    color: COLORS.redaction, lineHeight: 26,
+  distText: {
+    fontFamily: FONTS.monoBold, fontSize: 12,
+    color: COLORS.concrete, letterSpacing: 0.5,
+  },
+  distTextClose: { color: COLORS.green },
+  photoContainer: {
+    width: '100%', aspectRatio: 1,
+    backgroundColor: COLORS.navy, position: 'relative',
+  },
+  photo: { width: '100%', height: '100%' },
+  photoLoading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  photoOverlay: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    paddingVertical: 10, paddingHorizontal: 16,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+  },
+  photoOverlaySolved: { backgroundColor: 'rgba(0,230,118,0.25)' },
+  photoInstruction: {
+    fontFamily: FONTS.monoBold, fontSize: 12,
+    color: COLORS.ghost, letterSpacing: 1.5,
+  },
+  solvedBadgeText: {
+    fontFamily: FONTS.monoBold, fontSize: 14,
+    color: COLORS.green, letterSpacing: 3,
+  },
+  photoPlaceholder: {
+    width: '100%', height: '100%',
+    alignItems: 'center', justifyContent: 'center', gap: 8,
+  },
+  photoPlaceholderIcon: { fontSize: 40 },
+  photoPlaceholderText: {
+    fontFamily: FONTS.mono, fontSize: 12, color: COLORS.concrete,
+  },
+  captionBox: {
+    marginHorizontal: 16, marginTop: 12,
+    backgroundColor: COLORS.navyLight, borderRadius: 8, padding: 12,
+    borderLeftWidth: 3, borderLeftColor: COLORS.amber,
+  },
+  captionLabel: {
+    fontFamily: FONTS.monoBold, fontSize: 8, color: COLORS.amber,
+    letterSpacing: 2, marginBottom: 4,
+  },
+  captionText: {
+    fontFamily: FONTS.ui, fontSize: 13, color: COLORS.ghost, lineHeight: 20,
   },
   footer: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 14,
   },
-  attemptsRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  attemptsRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   attemptDot: { width: 8, height: 8, borderRadius: 4 },
   attemptsLabel: {
-    fontFamily: FONTS.mono, fontSize: 9, color: COLORS.redaction,
-    letterSpacing: 1.5, opacity: 0.5, marginLeft: 4,
+    fontFamily: FONTS.mono, fontSize: 10, color: COLORS.concrete,
+    letterSpacing: 0.5, marginLeft: 4,
   },
   submitBtn: {
-    backgroundColor: COLORS.redaction, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 2,
+    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8,
   },
-  submitBtnDisabled: { backgroundColor: COLORS.creamDim },
-  submitBtnText: { fontFamily: FONTS.monoBold, fontSize: 10, color: COLORS.cream, letterSpacing: 1.5 },
-  solvedBadge: { borderWidth: 1, borderColor: COLORS.green, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 2 },
-  solvedText: { fontFamily: FONTS.monoBold, fontSize: 10, color: COLORS.green, letterSpacing: 2 },
-  revealHint: {
-    fontFamily: FONTS.mono, fontSize: 10, color: COLORS.redaction,
-    opacity: 0.4, textAlign: 'center', marginTop: 8, letterSpacing: 0.5,
-  },
-  locationClassified: {
-    fontFamily: FONTS.mono, fontSize: 9, color: COLORS.redaction,
-    letterSpacing: 3, opacity: 0.25, textAlign: 'center', marginTop: 12,
+  submitBtnText: { fontFamily: FONTS.uiBold, fontSize: 13 },
+  walkHint: {
+    fontFamily: FONTS.mono, fontSize: 10, color: COLORS.concrete,
+    textAlign: 'center', paddingBottom: 12, opacity: 0.5, letterSpacing: 1,
   },
 });
