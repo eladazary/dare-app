@@ -27,12 +27,15 @@ ANON_KEY        = (
 PLACES_DIR      = os.path.join(os.path.dirname(__file__), "places")
 LLM_PROVIDER    = os.environ.get("LLM_PROVIDER", "groq")
 LLM_API_KEY     = os.environ.get("LLM_API_KEY", "")
-DELAY_SECS      = 3   # delay between LLM calls
+LLM_MODEL_OVERRIDE = os.environ.get("LLM_MODEL", "")
+DELAY_SECS      = 12  # delay between LLM calls — Groq free tier limit
 
 PROVIDER_CONFIG = {
-    "groq":      {"url": "https://api.groq.com/openai/v1/chat/completions",        "model": "llama-3.3-70b-versatile"},
-    "anthropic": {"url": "https://api.anthropic.com/v1/messages",                   "model": "claude-haiku-4-5"},
-    "openai":    {"url": "https://api.openai.com/v1/chat/completions",              "model": "gpt-4o-mini"},
+    "groq":      {"url": "https://api.groq.com/openai/v1/chat/completions",                        "model": "llama-3.3-70b-versatile"},
+    "anthropic": {"url": "https://api.anthropic.com/v1/messages",                                   "model": "claude-haiku-4-5"},
+    "openai":    {"url": "https://api.openai.com/v1/chat/completions",                              "model": "gpt-4o-mini"},
+    "google":    {"url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions","model": "gemini-2.0-flash"},
+    "together":  {"url": "https://api.together.xyz/v1/chat/completions",                            "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo"},
 }
 
 # ── Prompt ────────────────────────────────────────────────────────────
@@ -66,23 +69,21 @@ SYSTEM_PROMPT = """אתה כותב רמזים למשחק רחוב בשם Tracer.
 # ── LLM call ──────────────────────────────────────────────────────────
 
 def call_llm(place: dict) -> dict | None:
-    name    = place["name"]
-    ctx     = place.get("description", "")
-    quirk   = place.get("quirk", "")
-    ptype   = place.get("type", "מקום")
+    name  = place["name"]
+    ctx   = place.get("description", "")
+    quirk = place.get("quirk", "")
 
     user_msg = f"""כתוב רמז בעברית למקום הזה. הרמז חייב להיות קשה.
 
 שם המקום (אסור לציין): {name}
 {f"הקשר: {ctx}" if ctx else ""}
-{f"""
-⭐ הלב של הרמז — בנה אותו סביב הפרט הזה בלבד:
-"{quirk}"
-""" if quirk else ""}
+{(chr(10) + '⭐ הלב של הרמז — בנה אותו סביב הפרט הזה בלבד:' + chr(10) + f'"{quirk}"') if quirk else ""}
 
 חוקים: לא לציין שם. גוף ראשון. 2-3 משפטים. קשה לישראלי."""
 
-    cfg = PROVIDER_CONFIG.get(LLM_PROVIDER, PROVIDER_CONFIG["groq"])
+    cfg = dict(PROVIDER_CONFIG.get(LLM_PROVIDER, PROVIDER_CONFIG["groq"]))
+    if LLM_MODEL_OVERRIDE:
+        cfg["model"] = LLM_MODEL_OVERRIDE
 
     if LLM_PROVIDER == "anthropic":
         payload = {
@@ -90,11 +91,11 @@ def call_llm(place: dict) -> dict | None:
             "system": SYSTEM_PROMPT,
             "messages": [{"role": "user", "content": user_msg}],
         }
-        headers = {
-            "x-api-key": LLM_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        }
+        curl_headers = [
+            "-H", f"x-api-key: {LLM_API_KEY}",
+            "-H", "anthropic-version: 2023-06-01",
+            "-H", "content-type: application/json",
+        ]
     else:
         payload = {
             "model": cfg["model"], "max_tokens": 512, "temperature": 0.8,
@@ -103,25 +104,34 @@ def call_llm(place: dict) -> dict | None:
                 {"role": "user", "content": user_msg},
             ],
         }
-        headers = {
-            "Authorization": f"Bearer {LLM_API_KEY}",
-            "Content-Type": "application/json",
-        }
+        curl_headers = [
+            "-H", f"Authorization: Bearer {LLM_API_KEY}",
+            "-H", "Content-Type: application/json",
+        ]
 
     try:
-        req = urllib.request.Request(
-            cfg["url"], data=json.dumps(payload).encode(),
-            headers=headers, method="POST",
+        result = subprocess.run(
+            ["curl", "-s", "--max-time", "30",
+             "-X", "POST", cfg["url"],
+             *curl_headers,
+             "-d", json.dumps(payload)],
+            capture_output=True, text=True, timeout=35,
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
+        if result.returncode != 0 or not result.stdout.strip():
+            print(f"    ✗ curl error: {result.stderr[:100]}")
+            return None
 
+        data = json.loads(result.stdout)
         if LLM_PROVIDER == "anthropic":
             text = data["content"][0]["text"]
         else:
+            if "error" in data:
+                print(f"    ✗ API error: {data['error'].get('message','?')[:80]}")
+                return None
             text = data["choices"][0]["message"]["content"]
 
-        match = __import__("re").search(r'\{[\s\S]*\}', text)
+        import re
+        match = re.search(r'\{[\s\S]*\}', text)
         if not match: return None
         parsed = json.loads(match.group())
         if not all(k in parsed for k in ("clue", "hint", "difficulty")):
@@ -129,7 +139,7 @@ def call_llm(place: dict) -> dict | None:
         return parsed
 
     except Exception as e:
-        print(f"    ✗ LLM error: {e}")
+        print(f"    ✗ error: {e}")
         return None
 
 
@@ -142,36 +152,10 @@ def insert_trace(place: dict, generated: dict) -> bool:
         "hard":      {"solve": 100, "notify": 600},
         "legendary": {"solve": 200, "notify": 1000},
     }
-    diff = generated["difficulty"] if generated["difficulty"] in diff_radii else "medium"
+    diff  = generated["difficulty"] if generated["difficulty"] in diff_radii else "medium"
     radii = diff_radii[diff]
 
     result = subprocess.run(
-        ["curl", "-s", "--max-time", "15",
-         "-X", "POST",
-         f"{SUPABASE_URL}/functions/v1/generate-traces",
-         "-H", f"Authorization: Bearer {ANON_KEY}",
-         "-H", "Content-Type: application/json",
-         "--data-binary", "@-"],
-        input=json.dumps({
-            "pois": [{
-                "name": place["name"],
-                "lat": place["lat"],
-                "lng": place["lng"],
-                "type": place.get("type", "place"),
-                "description": f"CLUE_OVERRIDE:{generated['clue']}|HINT_OVERRIDE:{generated['hint']}",
-            }]
-        }).encode(),
-        capture_output=True, timeout=20,
-    )
-    # Parse result
-    try:
-        data = json.loads(result.stdout)
-        return data.get("generated", 0) > 0
-    except:
-        pass
-
-    # Fallback: insert via seed_single_trace RPC
-    rpc_result = subprocess.run(
         ["curl", "-s", "--max-time", "15",
          "-X", "POST",
          f"{SUPABASE_URL}/rest/v1/rpc/seed_single_trace",
@@ -189,9 +173,12 @@ def insert_trace(place: dict, generated: dict) -> bool:
              "p_solve_radius": radii["solve"],
              "p_notify_radius": radii["notify"],
          })],
-        capture_output=True, timeout=20,
+        capture_output=True, text=True, timeout=20,
     )
-    return rpc_result.returncode == 0
+    if result.returncode != 0:
+        return False
+    # RPC returns null on success
+    return result.stdout.strip() in ("null", "", "null\n")
 
 
 # ── Existing names ────────────────────────────────────────────────────
