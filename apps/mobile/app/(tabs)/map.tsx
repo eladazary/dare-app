@@ -11,6 +11,7 @@ import {
   TouchableWithoutFeedback,
 } from 'react-native';
 import MapView, { Marker, Polygon, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const SCREEN_H = Dimensions.get('window').height;
@@ -99,6 +100,7 @@ function difficultyToStage(
 }
 
 export default function MapScreen() {
+  const router = useRouter();
   const mapRef = useRef<MapView>(null);
   const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
 
@@ -351,12 +353,16 @@ export default function MapScreen() {
       {/* HUD overlay */}
       <SafeAreaView style={styles.hud} edges={['top']} pointerEvents="box-none">
         <View style={styles.hudRow}>
-          <View style={styles.hudLeft}>
+          <TouchableOpacity
+            style={styles.hudLeft}
+            onLongPress={() => router.push('/admin/create-trace')}
+            delayLongPress={800}
+          >
             <Text style={styles.hudLabel}>TRACES NEARBY</Text>
             <Text style={styles.hudCount}>
               {isLoading ? '—' : traces.filter((t) => !t.already_solved).length}
             </Text>
-          </View>
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.recenterBtn}
