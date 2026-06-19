@@ -116,6 +116,7 @@ export default function MapScreen() {
   const [showAnswer, setShowAnswer] = useState(false);
   const [solveResult, setSolveResult] = useState<{ selfieUri: string; startedAt: number } | null>(null);
   const [showTaunt, setShowTaunt] = useState(false);
+  const [diffFilter, setDiffFilter] = useState<Set<string>>(new Set(['easy','medium','hard','legendary']));
   const [solveMultiplier, setSolveMultiplier] = useState(1);
   const [showExtraAttempts, setShowExtraAttempts] = useState(false);
   const [userLevel, setUserLevel] = useState('wanderer');
@@ -277,7 +278,7 @@ export default function MapScreen() {
         }}
       >
         {/* Trace zones — show search area only, no exact location */}
-        {traces.filter(t => !t.already_solved).map((trace) => {
+        {traces.filter(t => !t.already_solved && diffFilter.has(t.difficulty)).map((trace) => {
           const isActive = trace.distance_meters <= trace.notify_radius_meters;
           const col = DIFF_COLOR[trace.difficulty] ?? COLORS.amber;
           const visualRadius = { easy: 80, medium: 120, hard: 160, legendary: 200 }[trace.difficulty] ?? 100;
@@ -360,7 +361,7 @@ export default function MapScreen() {
           >
             <Text style={styles.hudLabel}>TRACES NEARBY</Text>
             <Text style={styles.hudCount}>
-              {isLoading ? '—' : traces.filter((t) => !t.already_solved).length}
+              {isLoading ? '—' : traces.filter((t) => !t.already_solved && diffFilter.has(t.difficulty)).length}
             </Text>
           </TouchableOpacity>
 
@@ -388,6 +389,32 @@ export default function MapScreen() {
             <Text style={styles.scanningText}>SCANNING AREA...</Text>
           </View>
         )}
+
+        {/* Difficulty filter chips */}
+        <View style={styles.filterRow}>
+          {(['easy','medium','hard','legendary'] as const).map(d => {
+            const col = DIFF_COLOR[d];
+            const active = diffFilter.has(d);
+            return (
+              <TouchableOpacity
+                key={d}
+                style={[styles.filterChip, { borderColor: col }, active && { backgroundColor: col }]}
+                onPress={() => {
+                  setDiffFilter(prev => {
+                    const next = new Set(prev);
+                    if (next.has(d) && next.size > 1) next.delete(d);
+                    else next.add(d);
+                    return next;
+                  });
+                }}
+              >
+                <Text style={[styles.filterChipText, { color: active ? COLORS.navy : col }]}>
+                  {d.toUpperCase()}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
       </SafeAreaView>
 
@@ -532,6 +559,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.navy,
   },
+  filterRow: {
+    flexDirection: 'row', gap: 6, paddingHorizontal: 16,
+    marginTop: 8, justifyContent: 'flex-start',
+  },
+  filterChip: {
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 14, borderWidth: 1.5,
+    backgroundColor: 'rgba(10,10,10,0.8)',
+  },
+  filterChipText: { fontFamily: FONTS.monoBold, fontSize: 9, letterSpacing: 1 },
   chipWrapper: {
     alignItems: 'center',
   },

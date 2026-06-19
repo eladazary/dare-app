@@ -71,9 +71,11 @@ export default function TraceCard({
           )}
         </View>
         {distanceMeters != null && !isSolved && (
-          <Text style={[styles.distText, canSubmit && styles.distTextClose]}>
-            📍 {formatDistance(distanceMeters)}
-          </Text>
+          <View style={[styles.rangeBadge, canSubmit && styles.rangeBadgeIn]}>
+            <Text style={[styles.rangeText, canSubmit && styles.rangeTextIn]}>
+              {canSubmit ? '✓ You\'re in range' : 'Find the spot'}
+            </Text>
+          </View>
         )}
       </View>
 
@@ -178,6 +180,17 @@ const styles = StyleSheet.create({
     color: COLORS.concrete, letterSpacing: 0.5,
   },
   distTextClose: { color: COLORS.green },
+  rangeBadge: {
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10,
+    backgroundColor: 'rgba(138,138,138,0.15)',
+    borderWidth: 1, borderColor: 'rgba(138,138,138,0.3)',
+  },
+  rangeBadgeIn: {
+    backgroundColor: 'rgba(0,230,118,0.15)',
+    borderColor: COLORS.green,
+  },
+  rangeText: { fontFamily: FONTS.monoBold, fontSize: 10, color: COLORS.concrete, letterSpacing: 0.5 },
+  rangeTextIn: { color: COLORS.green },
   photoContainer: {
     width: '100%', aspectRatio: 1,
     backgroundColor: COLORS.navy, position: 'relative',
