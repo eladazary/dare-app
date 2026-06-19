@@ -10,7 +10,7 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
 } from 'react-native';
-import MapView, { Marker, Polygon, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Marker, Polygon, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const SCREEN_H = Dimensions.get('window').height;
@@ -274,33 +274,44 @@ export default function MapScreen() {
           longitudeDelta: 0.012,
         }}
       >
-        {/* Floating trace chips */}
+        {/* Trace zones — show search area only, no exact location */}
         {traces.filter(t => !t.already_solved).map((trace) => {
           const isActive = trace.distance_meters <= trace.notify_radius_meters;
           const col = DIFF_COLOR[trace.difficulty] ?? COLORS.amber;
+          const visualRadius = { easy: 80, medium: 120, hard: 160, legendary: 200 }[trace.difficulty] ?? 100;
           return (
-            <Marker
-              key={trace.id}
-              coordinate={{ latitude: trace.lat, longitude: trace.lng }}
-              onPress={() => openTrace(trace)}
-              anchor={{ x: 0.5, y: 1.15 }}
-              tracksViewChanges={false}
-            >
-              <View style={styles.chipWrapper}>
-                <View style={[
-                  styles.chip,
-                  { borderColor: col },
-                  isActive && { backgroundColor: col },
-                ]}>
-                  <Text style={[styles.chipDot, { color: isActive ? COLORS.navy : col }]}>●</Text>
-                  <Text style={[styles.chipLabel, { color: isActive ? COLORS.navy : col }]}>
-                    {trace.difficulty.toUpperCase()}
-                    {trace.xp_multiplier > 1 ? ` ${trace.xp_multiplier}×` : ''}
-                  </Text>
+            <React.Fragment key={trace.id}>
+              {/* Zone circle — tap anywhere inside opens the trace */}
+              <Circle
+                center={{ latitude: trace.lat, longitude: trace.lng }}
+                radius={visualRadius}
+                fillColor={isActive ? `${col}18` : 'rgba(138,138,138,0.06)'}
+                strokeColor={isActive ? col : 'rgba(138,138,138,0.25)'}
+                strokeWidth={isActive ? 2 : 1}
+                onPress={() => openTrace(trace)}
+              />
+              {/* Small difficulty label floating at zone edge — not center */}
+              <Marker
+                coordinate={{
+                  latitude: trace.lat + (visualRadius / 111320) * 0.7,
+                  longitude: trace.lng,
+                }}
+                onPress={() => openTrace(trace)}
+                anchor={{ x: 0.5, y: 1 }}
+                tracksViewChanges={false}
+              >
+                <View style={styles.chipWrapper}>
+                  <View style={[styles.chip, { borderColor: col }, isActive && { backgroundColor: col }]}>
+                    <Text style={[styles.chipDot, { color: isActive ? COLORS.navy : col }]}>●</Text>
+                    <Text style={[styles.chipLabel, { color: isActive ? COLORS.navy : col }]}>
+                      {trace.difficulty.toUpperCase()}
+                      {(trace.xp_multiplier ?? 1) > 1 ? ` ${trace.xp_multiplier}×` : ''}
+                    </Text>
+                  </View>
+                  <View style={[styles.chipTip, { borderTopColor: isActive ? col : col + '80' }]} />
                 </View>
-                <View style={[styles.chipTip, { borderTopColor: isActive ? col : col + '80' }]} />
-              </View>
-            </Marker>
+              </Marker>
+            </React.Fragment>
           );
         })}
 
