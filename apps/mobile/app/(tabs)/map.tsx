@@ -230,8 +230,8 @@ export default function MapScreen() {
     ]).then(([rot, ref]) => {
       if (!rot.error && rot.data > 0) console.log(`[traces] ${rot.data} rotated to cooldown`);
       if (!ref.error && ref.data > 0) console.log(`[traces] ${ref.data} returned from cooldown`);
-      // Activate pending traces to keep ~80 active
-      supabase.rpc('activate_pending_traces', { target_active: 80 }).then(({ data }) => {
+      // Activate all pending traces — map should always be as full as possible
+      supabase.rpc('activate_pending_traces').then(({ data }) => {
         if (data > 0) console.log(`[traces] activated ${data} from pending pool`);
       });
     });

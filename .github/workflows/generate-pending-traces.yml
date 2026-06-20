@@ -45,11 +45,11 @@ jobs:
               print(f"{fn}: {r.stdout.strip()}")
 
           # Activate pending to keep 80 traces active
+          # Activate ALL pending — map should always be as full as possible
           r = subprocess.run(
               ["curl", "-s", "-X", "POST", f"{URL}/rest/v1/rpc/activate_pending_traces",
                "-H", f"apikey: {KEY}", "-H", f"Authorization: Bearer {KEY}",
-               "-H", "Content-Type: application/json",
-               "-d", json.dumps({"target_active": 80})],
+               "-H", "Content-Type: application/json"],
               capture_output=True, text=True)
           print(f"activate_pending_traces: {r.stdout.strip()}")
           EOF
