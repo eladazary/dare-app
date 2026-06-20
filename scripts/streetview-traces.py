@@ -19,6 +19,8 @@ Setup:
 
 Options:
   --count N      Traces to create (default: 50)
+  --pending      Create as pending (inactive) for pool — default is active
+  --min-pool N   Only generate if pending pool < N (default: no check)
   --dry-run      Fetch POIs + check coverage, don't insert
   --city NAME    tel-aviv (default) | london
 """
@@ -166,7 +168,9 @@ def pick_difficulty() -> tuple:
     return "medium", 50, 300, 12
 
 
-def insert_trace(lat, lng, photo_url, difficulty, solve_r, notify_r, place_name, caption="", expires_at=None) -> bool:
+def insert_trace(lat, lng, photo_url, difficulty, solve_r, notify_r, place_name,
+                 caption="", expires_at=None, pending=False) -> bool:
+    # pending=True → status='pending', is_active=false (pool trace, not yet shown)
     r1 = subprocess.run(
         ["curl", "-s", "--max-time", "15", "-X", "POST",
          f"{SUPABASE_URL}/rest/v1/rpc/seed_single_trace",
@@ -196,18 +200,40 @@ def insert_trace(lat, lng, photo_url, difficulty, solve_r, notify_r, place_name,
     if r2.returncode != 0:
         return False
 
-    # Set expires_at
-    if expires_at:
+    # Set status/expires_at
+    patch = {}
+    if pending:
+        patch["status"]    = "pending"
+        patch["is_active"] = False
+        patch["expires_at"] = None
+    elif expires_at:
+        patch["expires_at"] = expires_at
+        patch["status"]     = "active"
+
+    if patch:
         subprocess.run(
             ["curl", "-s", "--max-time", "10", "-X", "PATCH",
              f"{SUPABASE_URL}/rest/v1/traces?place_name=eq.{urllib.parse.quote(place_name)}",
              "-H", f"apikey: {SUPABASE_KEY}",
              "-H", f"Authorization: Bearer {SUPABASE_KEY}",
              "-H", "Content-Type: application/json",
-             "-d", json.dumps({"expires_at": expires_at})],
+             "-d", json.dumps(patch)],
             capture_output=True, text=True, timeout=15,
         )
     return True
+
+
+def get_pending_pool_size() -> int:
+    try:
+        r = subprocess.run(
+            ["curl", "-s", f"{SUPABASE_URL}/rest/v1/rpc/pending_pool_size",
+             "-H", f"apikey: {SUPABASE_KEY}",
+             "-H", "Authorization: Bearer " + SUPABASE_KEY],
+            capture_output=True, text=True, timeout=10,
+        )
+        return int(r.stdout.strip())
+    except:
+        return 0
 
 
 def get_existing() -> set:
@@ -229,9 +255,11 @@ def main():
     flags = {a.lstrip("-").split("=")[0]: (a.split("=")[1] if "=" in a else True)
              for a in sys.argv[1:] if a.startswith("--")}
 
-    dry_run = "dry-run" in flags
-    count   = int(flags.get("count", 50))
-    city    = (args[0] if args else "tel-aviv").lower().replace(" ", "-")
+    dry_run  = "dry-run" in flags
+    pending  = "pending"  in flags
+    count    = int(flags.get("count", 50))
+    min_pool = int(flags.get("min-pool", 0))
+    city     = (args[0] if args else "tel-aviv").lower().replace(" ", "-")
 
     if city not in CITIES:
         print(f"Unknown city '{city}'. Available: {', '.join(CITIES)}")
@@ -243,9 +271,19 @@ def main():
         print("✗ Set SUPABASE_SERVICE_KEY env var")
         sys.exit(1)
 
-    cfg  = CITIES[city]
-    bbox = cfg["bbox"]  # south, west, north, east
-    print(f"→ Seeding {count} Street View traces in {cfg['label']}\n")
+    # Pool check — skip if pool is already large enough
+    if min_pool and not dry_run:
+        pool = get_pending_pool_size()
+        if pool >= min_pool:
+            print(f"✓ Pending pool already has {pool} traces (≥ {min_pool}). Nothing to do.")
+            return
+        count = min(count, min_pool - pool)
+        print(f"  Pool has {pool}/{min_pool} pending traces — generating {count} more.")
+
+    mode  = "PENDING (pool)" if pending else "ACTIVE"
+    cfg   = CITIES[city]
+    bbox  = cfg["bbox"]  # south, west, north, east
+    print(f"→ Seeding {count} Street View traces [{mode}] in {cfg['label']}\n")
 
     # Collect all POIs in a single Overpass query to avoid rate limiting
     s, w, n, e = bbox
@@ -343,9 +381,9 @@ def main():
             continue
 
         from datetime import datetime, timezone, timedelta
-        expires_at = (datetime.now(timezone.utc) + timedelta(hours=ttl_h)).isoformat()
+        expires_at = None if pending else (datetime.now(timezone.utc) + timedelta(hours=ttl_h)).isoformat()
         caption = poi["name"] if poi["name"] else ""
-        if insert_trace(poi["lat"], poi["lng"], public_url, diff, solve_r, notify_r, place_name, caption, expires_at):
+        if insert_trace(poi["lat"], poi["lng"], public_url, diff, solve_r, notify_r, place_name, caption, expires_at, pending=pending):
             print(f"✓  ({poi['lat']:.5f},{poi['lng']:.5f}) → {head:.0f}°")
             existing.add(place_name)
             created += 1

@@ -222,10 +222,18 @@ export default function MapScreen() {
   const [failReason, setFailReason] = useState<'gps_fail' | 'photo_fail' | null>(null);
   const [panelSnap, setPanelSnap] = useState<'half' | 'fullscreen'>('half');
 
-  // Rotate expired traces on app open (no pg_cron, client-triggered)
+  // Maintain trace pool on app open (no pg_cron, client-triggered)
   useEffect(() => {
-    supabase.rpc('rotate_expired_traces').then(({ data, error }) => {
-      if (!error && data > 0) console.log(`[traces] rotated ${data} expired traces into cooldown`);
+    Promise.all([
+      supabase.rpc('rotate_expired_traces'),
+      supabase.rpc('refresh_cooldown_traces'),
+    ]).then(([rot, ref]) => {
+      if (!rot.error && rot.data > 0) console.log(`[traces] ${rot.data} rotated to cooldown`);
+      if (!ref.error && ref.data > 0) console.log(`[traces] ${ref.data} returned from cooldown`);
+      // Activate pending traces to keep ~80 active
+      supabase.rpc('activate_pending_traces', { target_active: 80 }).then(({ data }) => {
+        if (data > 0) console.log(`[traces] activated ${data} from pending pool`);
+      });
     });
   }, []);
 
