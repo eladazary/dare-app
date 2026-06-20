@@ -241,15 +241,14 @@ export default function MapScreen() {
       setSolveMultiplier(r < 0.60 ? 1 : r < 0.85 ? 2 : r < 0.97 ? 3 : 5);
     }
 
-    // Zoom map so the full circle fits in the top 40% of screen (card = bottom 60%).
-    // Formula: visible area = latDelta * 0.4, circle should occupy 65% of that.
-    // So latDelta = circleDiameter / (0.4 * 0.65) = circleDiameter / 0.26
-    // Center is shifted south so the circle sits in the middle of the top 40%.
+    // Zoom so the full circle sits in the top 50% of screen (card = bottom 50%).
+    // Visible area = latDelta * 0.50. Circle should occupy 65% of that.
+    // latDelta = circleDiameter / (0.50 * 0.65) = circleDiameter / 0.325
+    // Center at 25% from top = 25% above map center → shift south by latDelta * 0.25
     const circleDiameterDeg = (trace.notify_radius_meters * 2) / 111320;
-    const latDelta  = Math.max(0.008, circleDiameterDeg / 0.26);
+    const latDelta  = Math.max(0.008, circleDiameterDeg / 0.325);
     const lngDelta  = latDelta * 0.85;
-    // Circle center should be at 20% from top = 30% above map center
-    const centerLat = trace.lat - latDelta * 0.30;
+    const centerLat = trace.lat - latDelta * 0.25;
     mapRef.current?.animateToRegion(
       { latitude: centerLat, longitude: trace.lng, latitudeDelta: latDelta, longitudeDelta: lngDelta },
       500
@@ -671,12 +670,8 @@ export default function MapScreen() {
       {activeTrace && (
         <>
           <Animated.View style={[styles.panel, { transform: [{ translateY: slideAnim }] }]}>
-            {/* Header: handle + Not Now button */}
             <View style={styles.panelHandle}>
               <View style={styles.handleBar} />
-              <TouchableOpacity style={styles.notNowBtn} onPress={closeTrace}>
-                <Text style={styles.notNowText}>NOT NOW</Text>
-              </TouchableOpacity>
             </View>
 
             {/* Failure toast */}
@@ -712,6 +707,7 @@ export default function MapScreen() {
                 expiresAt={activeTrace.expires_at}
                 xpMultiplier={activeTrace.xp_multiplier ?? 1}
                 onSubmit={handleSubmit}
+                onDismiss={closeTrace}
               />
               <Text style={styles.solveCount}>
                 {activeTrace.solve_count === 0
@@ -840,39 +836,20 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: '60%',
+    height: '50%',
     backgroundColor: COLORS.navyMid,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
   },
   panelHandle: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 16,
-    position: 'relative',
   },
   handleBar: {
     width: 36,
     height: 4,
     borderRadius: 2,
     backgroundColor: COLORS.navyLight,
-  },
-  notNowBtn: {
-    position: 'absolute',
-    right: 16,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: COLORS.concrete,
-  },
-  notNowText: {
-    fontFamily: FONTS.monoBold,
-    fontSize: 9,
-    color: COLORS.concrete,
-    letterSpacing: 1.5,
   },
   failToast: {
     marginHorizontal: 16, marginBottom: 8,

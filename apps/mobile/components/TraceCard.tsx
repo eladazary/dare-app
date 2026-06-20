@@ -45,13 +45,14 @@ interface TraceCardProps {
   expiresAt?: string | null;
   xpMultiplier?: number;
   onSubmit?: () => void;
+  onDismiss?: () => void;
   // legacy compat
   segments?: ClueSegment[];
 }
 
 export default function TraceCard({
   id, referencePhotoUrl, clue, difficulty, attemptsLeft, maxAttempts,
-  stage, distanceMeters, notifyRadiusMeters, expiresAt, xpMultiplier = 1, onSubmit,
+  stage, distanceMeters, notifyRadiusMeters, expiresAt, xpMultiplier = 1, onSubmit, onDismiss,
 }: TraceCardProps) {
   const isSolved  = stage === 'solved';
   const canSubmit = stage === 'close' || stage === 'solved';
@@ -71,23 +72,30 @@ export default function TraceCard({
             <Text style={styles.multBadge}>{xpMultiplier}× XP</Text>
           )}
         </View>
-        {distanceMeters != null && !isSolved && (() => {
-          const distToEdge = notifyRadiusMeters
-            ? Math.max(0, Math.round(distanceMeters - notifyRadiusMeters))
-            : 0;
-          const insideZone = distToEdge === 0;
-          return (
-            <View style={[styles.rangeBadge, insideZone && styles.rangeBadgeIn]}>
-              <Text style={[styles.rangeText, insideZone && styles.rangeTextIn]}>
-                {canSubmit
-                  ? '✓ Found it'
-                  : insideZone
-                  ? 'Search the zone'
-                  : `${distToEdge < 1000 ? `${distToEdge}m` : `${(distToEdge/1000).toFixed(1)}km`} to zone`}
-              </Text>
-            </View>
-          );
-        })()}
+        <View style={styles.headerRight}>
+          {distanceMeters != null && !isSolved && (() => {
+            const distToEdge = notifyRadiusMeters
+              ? Math.max(0, Math.round(distanceMeters - notifyRadiusMeters))
+              : 0;
+            const insideZone = distToEdge === 0;
+            return (
+              <View style={[styles.rangeBadge, insideZone && styles.rangeBadgeIn]}>
+                <Text style={[styles.rangeText, insideZone && styles.rangeTextIn]}>
+                  {canSubmit
+                    ? '✓ FOUND'
+                    : insideZone
+                    ? 'SEARCH THE ZONE'
+                    : `${distToEdge < 1000 ? `${distToEdge}m` : `${(distToEdge/1000).toFixed(1)}km`} TO ZONE`}
+                </Text>
+              </View>
+            );
+          })()}
+          {onDismiss && !isSolved && !canSubmit && (
+            <TouchableOpacity style={styles.standDownBtn} onPress={onDismiss}>
+              <Text style={styles.standDownText}>STAND DOWN</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Reference photo */}
@@ -178,6 +186,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10,
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerRight: { alignItems: 'flex-end', gap: 5 },
+  standDownBtn: {
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 4, borderWidth: 1, borderColor: COLORS.concrete,
+  },
+  standDownText: {
+    fontFamily: FONTS.monoBold, fontSize: 8,
+    color: COLORS.concrete, letterSpacing: 1,
+  },
   diffDot: { width: 8, height: 8, borderRadius: 4 },
   diffLabel: { fontFamily: FONTS.monoBold, fontSize: 11, letterSpacing: 2 },
   multBadge: {
