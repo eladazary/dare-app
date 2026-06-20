@@ -222,6 +222,13 @@ export default function MapScreen() {
   const [failReason, setFailReason] = useState<'gps_fail' | 'photo_fail' | null>(null);
   const [panelSnap, setPanelSnap] = useState<'half' | 'fullscreen'>('half');
 
+  // Rotate expired traces on app open (no pg_cron, client-triggered)
+  useEffect(() => {
+    supabase.rpc('rotate_expired_traces').then(({ data, error }) => {
+      if (!error && data > 0) console.log(`[traces] rotated ${data} expired traces into cooldown`);
+    });
+  }, []);
+
   // Load user level + public ID for radius scaling and fog of war
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {

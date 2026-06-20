@@ -75,7 +75,7 @@ export function useNearbyTraces(location: UserLocation | null, publicUserId: str
         user_lat: location.lat,
         user_lng: location.lng,
         user_id: publicUserId ?? null,  // null = no solved-trace filtering yet
-        radius_m: 2000,
+        radius_m: 5000,
       });
       if (error) throw error;
       return (data ?? []) as NearbyTrace[];
