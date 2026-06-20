@@ -79,9 +79,15 @@ export default function TraceCard({
         )}
       </View>
 
-      {/* Reference photo — the trace */}
+      {/* Reference photo — locked until within notify radius */}
       <View style={styles.photoContainer}>
-        {referencePhotoUrl ? (
+        {stage === 'locked' ? (
+          <View style={styles.photoLocked}>
+            <Text style={styles.photoLockedIcon}>◎</Text>
+            <Text style={styles.photoLockedTitle}>CLASSIFIED</Text>
+            <Text style={styles.photoLockedSub}>Walk closer to reveal the target</Text>
+          </View>
+        ) : referencePhotoUrl ? (
           <>
             {imgLoading && (
               <View style={styles.photoLoading}>
@@ -94,7 +100,6 @@ export default function TraceCard({
               resizeMode="cover"
               onLoadEnd={() => setImgLoading(false)}
             />
-            {/* Instruction overlay */}
             {!isSolved && (
               <View style={styles.photoOverlay}>
                 <Text style={styles.photoInstruction}>Find this exact spot</Text>
@@ -222,6 +227,22 @@ const styles = StyleSheet.create({
   photoPlaceholderIcon: { fontSize: 40 },
   photoPlaceholderText: {
     fontFamily: FONTS.mono, fontSize: 12, color: COLORS.concrete,
+  },
+  photoLocked: {
+    width: '100%', height: '100%',
+    alignItems: 'center', justifyContent: 'center', gap: 10,
+    backgroundColor: COLORS.navyLight,
+  },
+  photoLockedIcon: {
+    fontSize: 44, color: COLORS.concrete, opacity: 0.4,
+  },
+  photoLockedTitle: {
+    fontFamily: FONTS.monoBold, fontSize: 11, color: COLORS.concrete,
+    letterSpacing: 4,
+  },
+  photoLockedSub: {
+    fontFamily: FONTS.mono, fontSize: 11, color: COLORS.concrete,
+    opacity: 0.6, textAlign: 'center', paddingHorizontal: 24,
   },
   captionBox: {
     marginHorizontal: 16, marginTop: 12,

@@ -372,8 +372,7 @@ export default function MapScreen() {
           longitudeDelta: 0.012,
         }}
       >
-        {/* Only show traces within notify radius — the discovery moment */}
-        {traces.filter(t => !t.already_solved && t.distance_meters <= t.notify_radius_meters).map((trace) => {
+        {traces.filter(t => !t.already_solved).map((trace) => {
           const visible = diffFilter.has(trace.difficulty);
           const isActive = trace.distance_meters <= trace.notify_radius_meters;
           const col = DIFF_COLOR[trace.difficulty] ?? COLORS.amber;
@@ -448,7 +447,7 @@ export default function MapScreen() {
           >
             <Text style={styles.hudLabel}>TRACES NEARBY</Text>
             <Text style={styles.hudCount}>
-              {isLoading ? '—' : traces.filter((t) => !t.already_solved && diffFilter.has(t.difficulty) && t.distance_meters <= t.notify_radius_meters).length}
+              {isLoading ? '—' : traces.filter((t) => !t.already_solved && diffFilter.has(t.difficulty)).length}
             </Text>
           </TouchableOpacity>
 
