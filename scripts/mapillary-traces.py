@@ -71,28 +71,34 @@ def mapillary_get(path: str, params: dict) -> dict | None:
 
 
 def fetch_cell_images(west, south, east, north) -> list:
-    """Fetch candidates from one grid cell, deduplicated by sequence."""
+    """Fetch candidates from one grid cell, filtered and deduplicated."""
     data = mapillary_get("/images", {
         "bbox":     f"{west},{south},{east},{north}",
-        "fields":   "id,geometry,thumb_1024_url,is_pano,quality_score,sequence",
+        "fields":   "id,geometry,thumb_1024_url,is_pano,quality_score,sequence,organization_id",
         "limit":    CANDIDATES_PER_CELL,
         "is_pano":  "false",
     })
     if not data or "data" not in data:
         return []
 
-    images = [
-        img for img in data["data"]
-        if img.get("thumb_1024_url")
-        and img.get("quality_score", 0) >= MIN_QUALITY
-        and not img.get("is_pano", True)
-    ]
+    images = []
+    for img in data["data"]:
+        if not img.get("thumb_1024_url"):
+            continue
+        if img.get("quality_score", 0) < MIN_QUALITY:
+            continue
+        if img.get("is_pano", True):
+            continue
+        # Skip professional mapping org images — these are almost always dashcam road coverage
+        if img.get("organization_id"):
+            continue
+        images.append(img)
 
-    # One image per sequence — prevents dozens of car-dashcam frames from the same drive
+    # One image per sequence — deduplicate drive-through frames
     seen_sequences = set()
     deduped = []
     for img in sorted(images, key=lambda x: x.get("quality_score", 0), reverse=True):
-        seq = img.get("sequence", img["id"])  # fall back to ID if no sequence
+        seq = img.get("sequence", img["id"])
         if seq not in seen_sequences:
             seen_sequences.add(seq)
             deduped.append(img)
@@ -115,7 +121,8 @@ def is_photo_traceable(local_path: str) -> bool:
         "prompt": AI_FILTER_PROMPT,
         "images": [img_b64],
         "stream": False,
-        "options": {"num_predict": 5},
+        "think": False,             # skip reasoning chain on qwen3/deepseek thinking models
+        "options": {"num_predict": 20},  # enough room for YES/NO + one word
     }
     result = subprocess.run(
         ["curl", "-s", "--max-time", "45",
@@ -125,18 +132,20 @@ def is_photo_traceable(local_path: str) -> bool:
         capture_output=True, text=True, timeout=50,
     )
     if result.returncode != 0 or not result.stdout.strip():
-        return True  # on error, don't reject
+        return False  # timeout/error = reject (conservative — skip ambiguous images)
 
     try:
         resp = json.loads(result.stdout)
         text = resp.get("response", "").upper().strip()
-        is_no = text.startswith("NO") or " NO" in text[:10]
-        is_yes = text.startswith("YES") or " YES" in text[:10]
-        if is_no and not is_yes:
-            return False
-        return True  # ambiguous = keep
+        if not text:
+            return False  # empty response = model couldn't process = reject
+        is_no  = text.startswith("NO")  or " NO"  in text[:15]
+        is_yes = text.startswith("YES") or " YES" in text[:15]
+        if is_yes and not is_no:
+            return True
+        return False  # NO or ambiguous = reject
     except Exception:
-        return True
+        return False
 
 
 # ── Supabase ───────────────────────────────────────────────────────────────────
