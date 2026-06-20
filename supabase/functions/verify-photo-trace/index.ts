@@ -11,8 +11,9 @@ const CORS = {
   "Access-Control-Allow-Headers": "authorization, content-type",
 };
 
+// LLaVA ignores complex format instructions — use the simplest possible yes/no question
 const PHOTO_PROMPT =
-  "You are the referee for a city exploration game. A player was given a reference photo of a specific real-world detail and told to find and photograph that exact spot.\n\nDoes the player's submitted photo show the same physical detail, object, or spot as the reference?\n\nRules:\n- Same wall / door / texture / structure = MATCH (different angle or lighting is fine)\n- Similar-looking but clearly a different place = NO_MATCH\n- Something else entirely = NO_MATCH\n- Too blurry or dark to tell = NO_MATCH\n\nFirst line must be exactly: MATCH or NO_MATCH\nSecond line: one short sentence explaining what you saw.";
+  "Look at these two photos. Are they showing the same physical object, wall, door, or spot? Ignore differences in lighting, angle, or framing. Reply with only YES or NO.";
 
 function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000;
@@ -63,11 +64,25 @@ async function compareWithOllama(
 
   const json = await res.json();
   const text: string = json.response ?? "";
-  const lines = text.trim().split("\n");
-  const verdict = lines[0].trim().toUpperCase();
-  const detail = lines.slice(1).join(" ").trim() || text.trim();
+  console.log("[ollama] raw response:", text.slice(0, 300));
 
-  return { match: verdict === "MATCH", detail };
+  const upper = text.toUpperCase().trim();
+  // Check for explicit NO first, then YES
+  const isNo = upper.startsWith("NO") || upper.includes(" NO ") || upper.includes("\nNO");
+  const isYes = upper.startsWith("YES") || upper.includes(" YES") || upper.includes("\nYES");
+
+  let match: boolean;
+  if (isNo && !isYes) {
+    match = false;
+  } else if (isYes) {
+    match = true;
+  } else {
+    // Model gave ambiguous/verbose answer — benefit of the doubt, don't burn attempt
+    console.log("[ollama] ambiguous response — treating as server_error");
+    throw new Error("ambiguous_response: " + text.slice(0, 100));
+  }
+
+  return { match, detail: text.trim() };
 }
 
 // ── Anthropic Claude Haiku (cloud fallback) ──────────────────────────────────
@@ -163,7 +178,10 @@ Deno.serve(async (req) => {
       return json({ valid: true, reason: "success", distance_m: Math.round(distM) });
     }
 
+      console.log(`[verify] GPS ok (${Math.round(distM)}m). Running photo check. ollama=${!!OLLAMA_URL}`);
+
     const { match, detail } = await comparePhotos(trace.reference_photo_url, selfie_url);
+    console.log(`[verify] photo result: match=${match} detail="${detail}"`);
 
     if (!match) {
       return json({ valid: false, reason: "photo_fail", detail });
@@ -171,7 +189,7 @@ Deno.serve(async (req) => {
 
     return json({ valid: true, reason: "success", distance_m: Math.round(distM) });
   } catch (e) {
-    console.error("verify-photo-trace error:", e);
+    console.error("[verify] error:", String(e));
     // On unexpected errors, don't burn the user's attempt
     return json({ valid: false, reason: "server_error", detail: String(e) }, 500);
   }

@@ -242,14 +242,18 @@ export default function MapScreen() {
         }
       );
 
-      const verifyJson = await verifyRes.json();
+      // Non-200 (e.g. 401 JWT error) → treat as server_error, don't burn attempt
+      if (!verifyRes.ok) {
+        console.warn('verify-photo-trace HTTP error:', verifyRes.status, '— allowing solve by GPS only');
+      } else {
+        const verifyJson = await verifyRes.json();
 
-      // Server errors don't burn attempts (don't punish for network issues)
-      if (verifyJson.reason === 'server_error') {
-        console.warn('Verification server error — allowing solve by GPS only:', verifyJson.detail);
-      } else if (!verifyJson.valid) {
-        await burnAttempt(verifyJson.reason === 'gps_fail' ? 'gps_fail' : 'photo_fail');
-        return;
+        if (verifyJson.reason === 'server_error') {
+          console.warn('Verification server error — allowing solve by GPS only:', verifyJson.detail);
+        } else if (!verifyJson.valid) {
+          await burnAttempt(verifyJson.reason === 'gps_fail' ? 'gps_fail' : 'photo_fail');
+          return;
+        }
       }
 
       // ── Step 3: Record solve ───────────────────────────────────────────────
