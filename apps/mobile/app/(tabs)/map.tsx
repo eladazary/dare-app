@@ -99,6 +99,31 @@ function difficultyToStage(
   return 'locked';
 }
 
+// ── Scanning reticle map marker ──────────────────────────────────────────────
+function ReticleMarker({ color, isActive, xpMultiplier = 1 }: {
+  color: string; isActive: boolean; xpMultiplier?: number;
+}) {
+  const col = isActive ? color : `${color}60`;
+  const fill = isActive ? color : 'transparent';
+  return (
+    <View style={{ width: 38, height: 38, alignItems: 'center', justifyContent: 'center' }}>
+      {/* Corner brackets */}
+      <View style={{ position: 'absolute', top: 0,  left: 0,  width: 9, height: 9, borderTopWidth: 1.5, borderLeftWidth: 1.5,  borderColor: col }} />
+      <View style={{ position: 'absolute', top: 0,  right: 0, width: 9, height: 9, borderTopWidth: 1.5, borderRightWidth: 1.5, borderColor: col }} />
+      <View style={{ position: 'absolute', bottom: 0, left: 0,  width: 9, height: 9, borderBottomWidth: 1.5, borderLeftWidth: 1.5,  borderColor: col }} />
+      <View style={{ position: 'absolute', bottom: 0, right: 0, width: 9, height: 9, borderBottomWidth: 1.5, borderRightWidth: 1.5, borderColor: col }} />
+      {/* Center dot */}
+      <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: fill, borderWidth: 1.5, borderColor: col }} />
+      {/* XP badge */}
+      {xpMultiplier > 1 && (
+        <View style={{ position: 'absolute', top: -2, right: -4, backgroundColor: color, borderRadius: 3, paddingHorizontal: 3, paddingVertical: 1 }}>
+          <Text style={{ fontSize: 7, color: COLORS.navy, fontFamily: FONTS.monoBold }}>{xpMultiplier}×</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function MapScreen() {
   const router = useRouter();
   const mapRef = useRef<MapView>(null);
@@ -347,33 +372,46 @@ export default function MapScreen() {
           longitudeDelta: 0.012,
         }}
       >
-        {/* Trace zones */}
-        {traces.filter(t => !t.already_solved && diffFilter.has(t.difficulty)).map((trace) => {
+        {/* Trace zones — render all but hide filtered ones to avoid native unmount bugs */}
+        {traces.filter(t => !t.already_solved).map((trace) => {
+          const visible = diffFilter.has(trace.difficulty);
           const isActive = trace.distance_meters <= trace.notify_radius_meters;
           const col = DIFF_COLOR[trace.difficulty] ?? COLORS.amber;
           const visualRadius = { easy: 80, medium: 120, hard: 160, legendary: 200 }[trace.difficulty] ?? 100;
+
+          // Stable random offset derived from trace ID — hides exact location
+          // The circle shows the search zone; the reticle is somewhere inside it
+          const seed = trace.id.charCodeAt(0) + trace.id.charCodeAt(4);
+          const angle = (seed * 137.5) % 360; // golden angle spread
+          const offsetFrac = 0.3 + (seed % 30) / 100; // 30–60% of radius
+          const offsetLat = Math.cos(angle * Math.PI / 180) * offsetFrac * visualRadius / 111320;
+          const offsetLng = Math.sin(angle * Math.PI / 180) * offsetFrac * visualRadius / (111320 * Math.cos(trace.lat * Math.PI / 180));
+
           return (
             <React.Fragment key={trace.id}>
+              {/* Zone circle centered on real location */}
               <Circle
                 center={{ latitude: trace.lat, longitude: trace.lng }}
                 radius={visualRadius}
-                fillColor={isActive ? `${col}15` : 'rgba(138,138,138,0.05)'}
-                strokeColor={isActive ? col : `${col}50`}
-                strokeWidth={isActive ? 1.5 : 1}
+                fillColor={visible ? (isActive ? `${col}12` : 'rgba(138,138,138,0.04)') : 'transparent'}
+                strokeColor={visible ? (isActive ? `${col}90` : `${col}30`) : 'transparent'}
+                strokeWidth={1}
               />
-              {/* Minimal pulsing dot — no text label to reduce clutter */}
-              <Marker
-                coordinate={{ latitude: trace.lat, longitude: trace.lng }}
-                onPress={() => openTrace(trace)}
-                anchor={{ x: 0.5, y: 0.5 }}
-                tracksViewChanges={false}
-              >
-                <View style={[styles.traceDot, isActive && { backgroundColor: col, borderColor: col }]}>
-                  {(trace.xp_multiplier ?? 1) > 1 && (
-                    <Text style={styles.traceDotMult}>{trace.xp_multiplier}×</Text>
-                  )}
-                </View>
-              </Marker>
+              {/* Reticle at offset position — doesn't reveal exact spot */}
+              {visible && (
+                <Marker
+                  coordinate={{ latitude: trace.lat + offsetLat, longitude: trace.lng + offsetLng }}
+                  onPress={() => openTrace(trace)}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  tracksViewChanges={false}
+                >
+                  <ReticleMarker
+                    color={col}
+                    isActive={isActive}
+                    xpMultiplier={trace.xp_multiplier ?? 1}
+                  />
+                </Marker>
+              )}
             </React.Fragment>
           );
         })}
@@ -650,17 +688,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   filterChipText: { fontFamily: FONTS.monoBold, fontSize: 8, letterSpacing: 0.5 },
-  traceDot: {
-    width: 14, height: 14, borderRadius: 7,
-    backgroundColor: 'rgba(138,138,138,0.4)',
-    borderWidth: 2, borderColor: 'rgba(138,138,138,0.6)',
-  },
-  traceDotMult: {
-    position: 'absolute', top: -10, right: -8,
-    fontFamily: FONTS.monoBold, fontSize: 8, color: COLORS.amber,
-    backgroundColor: 'rgba(10,10,10,0.9)',
-    paddingHorizontal: 2, borderRadius: 3,
-  },
   centerFill: {
     flex: 1,
     backgroundColor: COLORS.navy,
