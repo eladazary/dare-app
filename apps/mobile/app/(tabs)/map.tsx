@@ -10,7 +10,7 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
 } from 'react-native';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Marker, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -99,38 +99,33 @@ function difficultyToStage(
   return 'locked';
 }
 
-// ── Photo thumbnail map marker ────────────────────────────────────────────────
-import { Image as RNImage } from 'react-native';
+// ── Zone signal marker — abstract, no photo, no precise location ──────────────
+// The photo lives only in the TraceCard. The map just says "something is here."
 
-function PhotoMarker({ photoUrl, color, isActive, xpMultiplier = 1 }: {
-  photoUrl: string | null; color: string; isActive: boolean; xpMultiplier?: number;
+function ZoneSignal({ color, isActive, xpMultiplier = 1 }: {
+  color: string; isActive: boolean; xpMultiplier?: number;
 }) {
-  const [ready, setReady] = React.useState(false);
-  const border = isActive ? color : `${color}80`;
+  const col = isActive ? color : `${color}60`;
   return (
-    <View style={{
-      width: 54, height: 54, borderRadius: 8,
-      borderWidth: 2, borderColor: border,
-      overflow: 'hidden', backgroundColor: COLORS.navyMid,
-      shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
-      shadowOpacity: 0.6, shadowRadius: 4, elevation: 6,
-    }}>
-      {photoUrl ? (
-        <RNImage
-          source={{ uri: photoUrl }}
-          style={{ width: '100%', height: '100%' }}
-          resizeMode="cover"
-          onLoadEnd={() => setReady(true)}
-        />
-      ) : (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: COLORS.concrete, fontSize: 20 }}>◎</Text>
-        </View>
-      )}
-      {/* Difficulty color strip at bottom */}
-      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, backgroundColor: border }} />
+    <View style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+      {/* Outer ring */}
+      <View style={{
+        position: 'absolute', width: 32, height: 32, borderRadius: 16,
+        borderWidth: 1.5, borderColor: col,
+        backgroundColor: isActive ? `${col}18` : 'transparent',
+      }} />
+      {/* Inner dot */}
+      <View style={{
+        width: 10, height: 10, borderRadius: 5,
+        backgroundColor: isActive ? col : 'transparent',
+        borderWidth: 1.5, borderColor: col,
+      }} />
       {xpMultiplier > 1 && (
-        <View style={{ position: 'absolute', top: 2, right: 2, backgroundColor: color, borderRadius: 3, paddingHorizontal: 3, paddingVertical: 1 }}>
+        <View style={{
+          position: 'absolute', top: -4, right: -4,
+          backgroundColor: color, borderRadius: 3,
+          paddingHorizontal: 3, paddingVertical: 1,
+        }}>
           <Text style={{ fontSize: 7, color: COLORS.navy, fontFamily: FONTS.monoBold }}>{xpMultiplier}×</Text>
         </View>
       )}
@@ -389,32 +384,41 @@ export default function MapScreen() {
         {traces.filter(t => !t.already_solved && diffFilter.has(t.difficulty)).map((trace) => {
           const isActive = trace.distance_meters <= trace.notify_radius_meters;
           const col = DIFF_COLOR[trace.difficulty] ?? COLORS.amber;
-
-          // Stable offset so the thumbnail doesn't sit at the exact answer spot.
-          // Derived from trace ID — same every render, different per trace.
           const notifyR = trace.notify_radius_meters;
-          const seed    = trace.id.charCodeAt(0) + trace.id.charCodeAt(4) + trace.id.charCodeAt(8);
-          const angle   = (seed * 137.5) % 360;
-          const frac    = 0.35 + (seed % 25) / 100; // 35–60% of notify radius
-          const dLat    = Math.cos(angle * Math.PI / 180) * frac * notifyR / 111320;
-          const dLng    = Math.sin(angle * Math.PI / 180) * frac * notifyR
-                          / (111320 * Math.cos(trace.lat * Math.PI / 180));
+
+          // Zone circle — shows the search area, centered on real location
+          // The signal marker is offset so it doesn't pinpoint the exact spot
+          const seed  = trace.id.charCodeAt(0) + trace.id.charCodeAt(4) + trace.id.charCodeAt(8);
+          const angle = (seed * 137.5) % 360;
+          const frac  = 0.45 + (seed % 20) / 100; // 45–65% from center
+          const dLat  = Math.cos(angle * Math.PI / 180) * frac * notifyR / 111320;
+          const dLng  = Math.sin(angle * Math.PI / 180) * frac * notifyR
+                        / (111320 * Math.cos(trace.lat * Math.PI / 180));
 
           return (
-            <Marker
-              key={trace.id}
-              coordinate={{ latitude: trace.lat + dLat, longitude: trace.lng + dLng }}
-              onPress={() => openTrace(trace)}
-              anchor={{ x: 0.5, y: 0.5 }}
-              tracksViewChanges
-            >
-              <PhotoMarker
-                photoUrl={trace.reference_photo_url}
-                color={col}
-                isActive={isActive}
-                xpMultiplier={trace.xp_multiplier ?? 1}
+            <React.Fragment key={trace.id}>
+              {/* Search zone — tells the player WHERE to look */}
+              <Circle
+                center={{ latitude: trace.lat, longitude: trace.lng }}
+                radius={notifyR * 0.7}
+                fillColor={isActive ? `${col}10` : 'rgba(255,255,255,0.03)'}
+                strokeColor={isActive ? `${col}60` : `${col}25`}
+                strokeWidth={1}
               />
-            </Marker>
+              {/* Signal marker inside zone — abstract, no photo, no precise location */}
+              <Marker
+                coordinate={{ latitude: trace.lat + dLat, longitude: trace.lng + dLng }}
+                onPress={() => openTrace(trace)}
+                anchor={{ x: 0.5, y: 0.5 }}
+                tracksViewChanges={false}
+              >
+                <ZoneSignal
+                  color={col}
+                  isActive={isActive}
+                  xpMultiplier={trace.xp_multiplier ?? 1}
+                />
+              </Marker>
+            </React.Fragment>
           );
         })}
 
