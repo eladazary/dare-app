@@ -9,6 +9,8 @@ export type NearbyTrace = {
   lng: number;
   clue: string;
   place_name: string;
+  reference_photo_url: string | null;
+  photo_caption?: string | null;
   difficulty: 'easy' | 'medium' | 'hard' | 'legendary';
   solve_radius_meters: number;
   notify_radius_meters: number;
@@ -39,9 +41,9 @@ export function useLocation() {
     }
     setGranted(true);
 
-    // Get initial position fast
+    // Get initial position fast with low accuracy, then refine with watch
     const pos = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
+      accuracy: Location.Accuracy.Low,
     });
     setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
 
@@ -62,29 +64,23 @@ export function useLocation() {
   return { location, error, granted };
 }
 
-export function useNearbyTraces(location: UserLocation | null) {
+// publicUserId: undefined = still loading, null = not found, string = ready
+// Traces load immediately with publicUserId=null, then refetch when userId resolves
+export function useNearbyTraces(location: UserLocation | null, publicUserId: string | null | undefined) {
   return useQuery({
-    queryKey: ['nearby-traces', location?.lat.toFixed(3), location?.lng.toFixed(3)],
+    queryKey: ['nearby-traces', location?.lat.toFixed(3), location?.lng.toFixed(3), publicUserId ?? 'anon'],
     queryFn: async () => {
       if (!location) return [];
-      // Must use public.users.id (not auth.uid) for the already_solved check
-      const { data: { user } } = await supabase.auth.getUser();
-      let publicUserId: string | null = null;
-      if (user) {
-        const { data: pu } = await supabase
-          .from('users').select('id').eq('auth_id', user.id).single();
-        publicUserId = pu?.id ?? null;
-      }
       const { data, error } = await supabase.rpc('get_nearby_traces', {
         user_lat: location.lat,
         user_lng: location.lng,
-        user_id: publicUserId,
-        radius_m: 2000,
+        user_id: publicUserId ?? null,  // null = no solved-trace filtering yet
+        radius_m: 5000,
       });
       if (error) throw error;
       return (data ?? []) as NearbyTrace[];
     },
-    enabled: !!location,
+    enabled: !!location,  // don't wait for userId — show traces immediately
     refetchInterval: 30_000,
     staleTime: 20_000,
   });
