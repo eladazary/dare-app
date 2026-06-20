@@ -481,8 +481,8 @@ export default function MapScreen() {
       >
         {/* Sonar pings — always rendered to avoid react-native-maps remount bug.
             Visually hidden when a trace is open (circle takes over). */}
-        {traces.filter(t => !t.already_solved && diffFilter.has(t.difficulty)).map((trace) => {
-          const isActive = trace.distance_meters <= trace.notify_radius_meters;
+        {traces.filter(t => !t.already_solved && diffFilter.has(t.difficulty) && t.distance_meters <= t.notify_radius_meters).map((trace) => {
+          const isActive = true; // all visible traces are within notify_radius
           const col      = DIFF_COLOR[trace.difficulty] ?? COLORS.amber;
           const hidden   = !!activeTrace;
           return (
@@ -542,7 +542,7 @@ export default function MapScreen() {
           >
             <Text style={styles.hudLabel}>TRACES NEARBY</Text>
             <Text style={styles.hudCount}>
-              {isLoading ? '—' : traces.filter((t) => !t.already_solved && diffFilter.has(t.difficulty)).length}
+              {isLoading ? '—' : traces.filter((t) => !t.already_solved && diffFilter.has(t.difficulty) && t.distance_meters <= t.notify_radius_meters).length}
             </Text>
           </TouchableOpacity>
 
