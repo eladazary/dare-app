@@ -37,10 +37,11 @@ CITIES = {
 }
 
 DIFFICULTY_DIST = [
-    ("easy",      30, 30,  100),
-    ("medium",    40, 50,  300),
-    ("hard",      20, 100, 600),
-    ("legendary", 10, 200, 1000),
+    # name, weight, solve_r, notify_r, ttl_hours
+    ("easy",      30, 30,  100,  6),
+    ("medium",    40, 50,  300, 12),
+    ("hard",      20, 100, 600, 18),
+    ("legendary", 10, 200, 1000, 24),
 ]
 
 GRID_STEP         = 0.008   # ~800m cells, under Mapillary's 0.01° bbox limit
@@ -189,14 +190,14 @@ def upload_to_storage(local_path: str, filename: str) -> str | None:
 def pick_difficulty() -> tuple:
     r = random.randint(1, 100)
     cumulative = 0
-    for name, weight, solve, notify in DIFFICULTY_DIST:
+    for name, weight, solve, notify, ttl_h in DIFFICULTY_DIST:
         cumulative += weight
         if r <= cumulative:
-            return name, solve, notify
-    return "medium", 50, 300
+            return name, solve, notify, ttl_h
+    return "medium", 50, 300, 12
 
 
-def insert_trace(lat, lng, photo_url, difficulty, solve_r, notify_r, place_name) -> bool:
+def insert_trace(lat, lng, photo_url, difficulty, solve_r, notify_r, place_name, expires_at=None) -> bool:
     r1 = subprocess.run(
         ["curl", "-s", "--max-time", "15", "-X", "POST",
          f"{SUPABASE_URL}/rest/v1/rpc/seed_single_trace",
@@ -222,7 +223,20 @@ def insert_trace(lat, lng, photo_url, difficulty, solve_r, notify_r, place_name)
                            "p_lat": lat, "p_lng": lng})],
         capture_output=True, text=True, timeout=20,
     )
-    return r2.returncode == 0
+    if r2.returncode != 0:
+        return False
+
+    if expires_at:
+        subprocess.run(
+            ["curl", "-s", "--max-time", "10", "-X", "PATCH",
+             f"{SUPABASE_URL}/rest/v1/traces?place_name=eq.{urllib.parse.quote(place_name)}",
+             "-H", f"apikey: {SUPABASE_KEY}",
+             "-H", f"Authorization: Bearer {SUPABASE_KEY}",
+             "-H", "Content-Type: application/json",
+             "-d", json.dumps({"expires_at": expires_at})],
+            capture_output=True, text=True, timeout=15,
+        )
+    return True
 
 
 def get_existing_ids() -> set:
@@ -306,7 +320,7 @@ def main():
             lng, lat = coords[0], coords[1]
             thumb    = img["thumb_1024_url"]
             quality  = img.get("quality_score", 0)
-            diff, solve_r, notify_r = pick_difficulty()
+            diff, solve_r, notify_r, ttl_h = pick_difficulty()
 
             if dry_run:
                 # In dry-run, just download to evaluate with AI (don't upload)
@@ -344,7 +358,9 @@ def main():
                 print("✗ upload")
                 continue
 
-            if insert_trace(lat, lng, public_url, diff, solve_r, notify_r, place_name):
+            from datetime import datetime, timezone, timedelta
+            expires_at = (datetime.now(timezone.utc) + timedelta(hours=ttl_h)).isoformat()
+            if insert_trace(lat, lng, public_url, diff, solve_r, notify_r, place_name, expires_at):
                 print(f"✓  ({lat:.5f},{lng:.5f})")
                 existing.add(place_name)
                 created += 1
