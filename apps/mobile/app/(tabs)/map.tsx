@@ -8,7 +8,6 @@ import {
   Animated,
   Dimensions,
   ScrollView,
-  TouchableWithoutFeedback,
 } from 'react-native';
 import MapView, { Marker, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useRouter } from 'expo-router';
@@ -668,16 +667,17 @@ export default function MapScreen() {
         />
       )}
 
-      {/* TraceCard slide-up panel */}
+      {/* TraceCard slide-up panel — no backdrop close, map stays interactive */}
       {activeTrace && (
         <>
-          <TouchableWithoutFeedback onPress={closeTrace}>
-            <View style={styles.backdrop} />
-          </TouchableWithoutFeedback>
           <Animated.View style={[styles.panel, { transform: [{ translateY: slideAnim }] }]}>
-            <TouchableOpacity style={styles.panelHandle} onPress={closeTrace}>
+            {/* Header: handle + Not Now button */}
+            <View style={styles.panelHandle}>
               <View style={styles.handleBar} />
-            </TouchableOpacity>
+              <TouchableOpacity style={styles.notNowBtn} onPress={closeTrace}>
+                <Text style={styles.notNowText}>NOT NOW</Text>
+              </TouchableOpacity>
+            </View>
 
             {/* Failure toast */}
             {failReason && (
@@ -846,14 +846,33 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 16,
   },
   panelHandle: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 12,
+    paddingHorizontal: 16,
+    position: 'relative',
   },
   handleBar: {
     width: 36,
     height: 4,
     borderRadius: 2,
     backgroundColor: COLORS.navyLight,
+  },
+  notNowBtn: {
+    position: 'absolute',
+    right: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.concrete,
+  },
+  notNowText: {
+    fontFamily: FONTS.monoBold,
+    fontSize: 9,
+    color: COLORS.concrete,
+    letterSpacing: 1.5,
   },
   failToast: {
     marginHorizontal: 16, marginBottom: 8,
