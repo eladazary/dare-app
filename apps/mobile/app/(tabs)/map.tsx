@@ -10,7 +10,7 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
 } from 'react-native';
-import MapView, { Marker, Polygon, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Marker, Polygon, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -62,7 +62,7 @@ async function seedTracesNearMe(lat: number, lng: number) {
 
 const DIFF_COLOR: Record<string, string> = {
   easy: COLORS.green, medium: COLORS.amber,
-  hard: COLORS.classified, legendary: COLORS.purple,
+  hard: COLORS.classified, legendary: '#A855F7',
 };
 
 const DARK_MAP_STYLE = [
@@ -377,9 +377,8 @@ export default function MapScreen() {
           const visible = diffFilter.has(trace.difficulty);
           const isActive = trace.distance_meters <= trace.notify_radius_meters;
           const col = DIFF_COLOR[trace.difficulty] ?? COLORS.amber;
+          // Stable offset derived from trace ID so reticle doesn't sit on the exact answer spot
           const visualRadius = { easy: 80, medium: 120, hard: 160, legendary: 200 }[trace.difficulty] ?? 100;
-
-          // Stable random offset derived from trace ID — hides exact location
           // The circle shows the search zone; the reticle is somewhere inside it
           const seed = trace.id.charCodeAt(0) + trace.id.charCodeAt(4);
           const angle = (seed * 137.5) % 360; // golden angle spread
@@ -387,32 +386,21 @@ export default function MapScreen() {
           const offsetLat = Math.cos(angle * Math.PI / 180) * offsetFrac * visualRadius / 111320;
           const offsetLng = Math.sin(angle * Math.PI / 180) * offsetFrac * visualRadius / (111320 * Math.cos(trace.lat * Math.PI / 180));
 
+          if (!visible) return null;
           return (
-            <React.Fragment key={trace.id}>
-              {/* Zone circle centered on real location */}
-              <Circle
-                center={{ latitude: trace.lat, longitude: trace.lng }}
-                radius={visualRadius}
-                fillColor={visible ? (isActive ? `${col}12` : 'rgba(138,138,138,0.04)') : 'transparent'}
-                strokeColor={visible ? (isActive ? `${col}90` : `${col}30`) : 'transparent'}
-                strokeWidth={1}
+            <Marker
+              key={trace.id}
+              coordinate={{ latitude: trace.lat + offsetLat, longitude: trace.lng + offsetLng }}
+              onPress={() => openTrace(trace)}
+              anchor={{ x: 0.5, y: 0.5 }}
+              tracksViewChanges={false}
+            >
+              <ReticleMarker
+                color={col}
+                isActive={isActive}
+                xpMultiplier={trace.xp_multiplier ?? 1}
               />
-              {/* Reticle at offset position — doesn't reveal exact spot */}
-              {visible && (
-                <Marker
-                  coordinate={{ latitude: trace.lat + offsetLat, longitude: trace.lng + offsetLng }}
-                  onPress={() => openTrace(trace)}
-                  anchor={{ x: 0.5, y: 0.5 }}
-                  tracksViewChanges={false}
-                >
-                  <ReticleMarker
-                    color={col}
-                    isActive={isActive}
-                    xpMultiplier={trace.xp_multiplier ?? 1}
-                  />
-                </Marker>
-              )}
-            </React.Fragment>
+            </Marker>
           );
         })}
 
