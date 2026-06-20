@@ -90,7 +90,7 @@ export default function TraceCard({
               </View>
             );
           })()}
-          {onDismiss && !isSolved && !canSubmit && (
+          {onDismiss && !isSolved && (
             <TouchableOpacity style={styles.standDownBtn} onPress={onDismiss}>
               <Text style={styles.standDownText}>STAND DOWN</Text>
             </TouchableOpacity>

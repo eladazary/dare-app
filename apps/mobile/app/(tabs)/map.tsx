@@ -8,6 +8,7 @@ import {
   Animated,
   Dimensions,
   ScrollView,
+  PanResponder,
 } from 'react-native';
 import MapView, { Marker, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useRouter } from 'expo-router';
@@ -188,10 +189,15 @@ function SonarPing({ color, isActive, xpMultiplier = 1, hidden = false }: {
   );
 }
 
+// Panel snaps to these two positions (via slideAnim translateY)
+const PANEL_EXPANDED  = 0;                    // full 50% panel visible
+const PANEL_MINIMIZED = SCREEN_H * 0.38;      // only ~90px visible (handle + header)
+
 export default function MapScreen() {
   const router = useRouter();
   const mapRef = useRef<MapView>(null);
-  const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
+  const slideAnim    = useRef(new Animated.Value(SCREEN_H)).current;
+  const panelMinimized = useRef(false);
 
   // undefined = not yet loaded, null = loaded but not found, string = ready
   const [publicUserId, setPublicUserId] = useState<string | null | undefined>(undefined);
@@ -229,6 +235,27 @@ export default function MapScreen() {
   const { pendingRescue, setPendingRescue } = useRescueStore();
   const startedAtRef = useRef<number>(0);
 
+  // Drag handle to minimize/expand the panel
+  const handlePanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 8,
+      onPanResponderMove: (_, gs) => {
+        const base = panelMinimized.current ? PANEL_MINIMIZED : PANEL_EXPANDED;
+        const next = Math.max(PANEL_EXPANDED, Math.min(PANEL_MINIMIZED, base + gs.dy));
+        slideAnim.setValue(next);
+      },
+      onPanResponderRelease: (_, gs) => {
+        const minimize = gs.dy > 40 || gs.vy > 0.5;
+        panelMinimized.current = minimize;
+        Animated.spring(slideAnim, {
+          toValue: minimize ? PANEL_MINIMIZED : PANEL_EXPANDED,
+          useNativeDriver: true,
+          bounciness: minimize ? 0 : 4,
+        }).start();
+      },
+    })
+  ).current;
+
   const openTrace = useCallback((trace: NearbyTrace) => {
     setActiveTrace(trace);
     setAttemptsLeft(trace.max_attempts);
@@ -254,10 +281,12 @@ export default function MapScreen() {
       500
     );
 
-    Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
+    panelMinimized.current = false;
+    Animated.spring(slideAnim, { toValue: PANEL_EXPANDED, useNativeDriver: true, bounciness: 4 }).start();
   }, [slideAnim]);
 
   const closeTrace = useCallback(() => {
+    panelMinimized.current = false;
     Animated.timing(slideAnim, { toValue: SCREEN_H, duration: 250, useNativeDriver: true }).start(() => {
       setActiveTrace(null);
       setSolveResult(null);
@@ -670,7 +699,7 @@ export default function MapScreen() {
       {activeTrace && (
         <>
           <Animated.View style={[styles.panel, { transform: [{ translateY: slideAnim }] }]}>
-            <View style={styles.panelHandle}>
+            <View style={styles.panelHandle} {...handlePanResponder.panHandlers}>
               <View style={styles.handleBar} />
             </View>
 
