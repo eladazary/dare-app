@@ -44,6 +44,7 @@ function effectiveSolveRadius(baseRadius: number, userLevel: string): number {
 }
 import { useRescueStore } from '@/stores/rescueStore';
 import { useLocation, useNearbyTraces, useGhostTrails, useRevealedZones, type NearbyTrace } from '@/hooks/useTraces';
+import { useTraceProximityNotifier } from '@/hooks/useTraceProximityNotifier';
 import { supabase } from '@/lib/supabase';
 
 // ─────────────────────────────────────────────
@@ -206,6 +207,7 @@ export default function MapScreen() {
   const { data: traces = [], isLoading, refetch } = useNearbyTraces(location, publicUserId);
   const { data: ghostTrails = [] } = useGhostTrails(location);
   const { data: revealedZones = [], refetch: refetchZones } = useRevealedZones(publicUserId ?? null);
+  useTraceProximityNotifier(location, publicUserId);
 
   const [activeTrace, setActiveTrace] = useState<NearbyTrace | null>(null);
   const [attemptsLeft, setAttemptsLeft] = useState(3);

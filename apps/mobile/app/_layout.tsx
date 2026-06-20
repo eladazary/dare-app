@@ -72,7 +72,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     // Handle notification tap when app is open
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as Record<string, any>;
-      if (data?.type === 'rescue_needed' && data?.rescue_id) {
+      if (data?.type === 'trace_nearby') {
+        router.replace('/(tabs)');
+      } else if (data?.type === 'rescue_needed' && data?.rescue_id) {
         setPendingRescue({
           rescueId: data.rescue_id,
           traceId: data.trace_id ?? '',

@@ -52,22 +52,37 @@ DIFFICULTY_DIST = [
 ]
 
 # Street View image size (max 640x640 on free tier)
-SV_SIZE = "640x640"
-SV_FOV  = 80   # field of view — 80° gives good building framing
-SV_PITCH = 5   # slight upward tilt to show full facade
+SV_SIZE  = "640x640"
+SV_FOV   = 80    # field of view for most POIs — 80° gives good building framing
+SV_PITCH = 5     # slight upward tilt to show full facade
+
+# Murals/graffiti get a narrower FOV to zoom into the wall surface
+MURAL_FOV   = 60
+MURAL_PITCH = 2
+
+# Only use Street View panoramas captured from this year onwards.
+# Google updates coverage continuously; old panos miss recent murals.
+MIN_SV_YEAR = 2022
 
 # ── OSM POI types — ordered by "most interesting for game" ────────────────────
-# Each entry: (OSM filter string, label, weight)
+# Each entry: (OSM filter string, label, weight, is_mural)
+# is_mural=True → use narrower FOV for wall framing
 POI_TYPES = [
-    ('["tourism"="artwork"]',           "street art",      20),
-    ('["tourism"="mural"]',             "mural",           15),
-    ('["amenity"="cafe"]["name"]',      "cafe",            15),
-    ('["shop"]["name"]',                "shop",            10),
-    ('["tourism"="attraction"]["name"]',"attraction",      10),
-    ('["historic"]["name"]',            "historic",        10),
-    ('["amenity"="bar"]["name"]',       "bar",              8),
-    ('["amenity"="restaurant"]["name"]',"restaurant",       7),
-    ('["tourism"="gallery"]["name"]',   "gallery",          5),
+    # Graffiti / murals / street art — highest priority
+    ('["tourism"="artwork"]["artwork_type"="mural"]',      "mural",       30, True),
+    ('["tourism"="artwork"]["artwork_type"="graffiti"]',   "graffiti",    30, True),
+    ('["tourism"="artwork"]["artwork_type"="street_art"]', "street art",  28, True),
+    ('["tourism"="artwork"]["artwork_type"="painting"]',   "painting",    25, True),
+    ('["tourism"="artwork"]',                              "artwork",     22, True),
+    ('["tourism"="mural"]',                                "mural (tag)", 20, True),
+    # Other interesting spots — lower weight
+    ('["amenity"="cafe"]["name"]',                         "cafe",        10, False),
+    ('["tourism"="attraction"]["name"]',                   "attraction",   9, False),
+    ('["historic"]["name"]',                               "historic",     8, False),
+    ('["shop"]["name"]',                                   "shop",         7, False),
+    ('["amenity"="bar"]["name"]',                          "bar",          5, False),
+    ('["tourism"="gallery"]["name"]',                      "gallery",      4, False),
+    ('["amenity"="restaurant"]["name"]',                   "restaurant",   3, False),
 ]
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -101,32 +116,46 @@ def bearing(lat1, lng1, lat2, lng2) -> float:
 
 
 def sv_metadata(lat, lng) -> dict | None:
-    """Check Street View coverage. Returns metadata dict or None if no coverage."""
+    """Check Street View coverage. Returns metadata dict or None if no coverage / too old."""
     url = (
         "https://maps.googleapis.com/maps/api/streetview/metadata"
-        f"?location={lat},{lng}&radius=30&key={GOOGLE_KEY}"
+        f"?location={lat},{lng}&radius=30&source=outdoor&key={GOOGLE_KEY}"
     )
     try:
         with urllib.request.urlopen(url, timeout=10) as r:
             data = json.loads(r.read())
             if data.get("status") != "OK":
                 return None
+            # Skip panoramas older than MIN_SV_YEAR — old shots miss recent murals
+            pano_date = data.get("date", "")  # "YYYY-MM" or ""
+            if pano_date:
+                try:
+                    year = int(pano_date.split("-")[0])
+                    if year < MIN_SV_YEAR:
+                        return None
+                except ValueError:
+                    pass
             return data
     except Exception:
         return None
 
 
-def sv_image(lat, lng, heading: float) -> str | None:
+def sv_image(lat, lng, heading: float, mural: bool = False) -> str | None:
     """Download Street View image, return local temp path."""
+    fov   = MURAL_FOV   if mural else SV_FOV
+    pitch = MURAL_PITCH if mural else SV_PITCH
     url = (
         "https://maps.googleapis.com/maps/api/streetview"
         f"?size={SV_SIZE}&location={lat},{lng}"
-        f"&heading={heading:.0f}&fov={SV_FOV}&pitch={SV_PITCH}"
+        f"&heading={heading:.0f}&fov={fov}&pitch={pitch}"
+        f"&source=outdoor&return_error_codes=true"
         f"&key={GOOGLE_KEY}"
     )
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Tracer/1.0"})
         with urllib.request.urlopen(req, timeout=20) as r:
+            if r.status != 200:
+                return None
             fd, path = tempfile.mkstemp(suffix=".jpg")
             with os.fdopen(fd, "wb") as f:
                 f.write(r.read())
@@ -288,7 +317,7 @@ def main():
     # Collect all POIs in a single Overpass query to avoid rate limiting
     s, w, n, e = bbox
     union_parts = "\n  ".join(
-        f'node{f}({s},{w},{n},{e});' for f, _, _ in POI_TYPES
+        f'node{f}({s},{w},{n},{e});' for f, _, _, _ in POI_TYPES
     )
     combined_query = f"[out:json][timeout:60];\n(\n  {union_parts}\n);\nout body 2000;"
 
@@ -306,22 +335,23 @@ def main():
     all_pois = []
     for node in raw_nodes:
         tags = node.get("tags", {})
-        matched_label, matched_weight = "place", 5
-        for _, label, weight in POI_TYPES:
+        matched_label, matched_weight, matched_mural = "place", 5, False
+        for _, label, weight, is_mural in POI_TYPES:
             if weight > matched_weight:
-                matched_label, matched_weight = label, weight
+                matched_label, matched_weight, matched_mural = label, weight, is_mural
         all_pois.append({
             "lat":    node["lat"],
             "lng":    node["lon"],
             "name":   tags.get("name", ""),
             "type":   matched_label,
             "weight": matched_weight,
+            "mural":  matched_mural,
         })
 
     # Count by type for display
     from collections import Counter
     type_counts = Counter(p["type"] for p in all_pois)
-    for label, weight in [(l, w) for _, l, w in POI_TYPES]:
+    for label, weight, _m in [(l, w, m) for _, l, w, m in POI_TYPES]:
         if type_counts.get(label):
             print(f"  {label}: {type_counts[label]} POIs")
 
@@ -360,14 +390,16 @@ def main():
         name_label = poi["name"] or poi["type"]
         diff, solve_r, notify_r, ttl_h = pick_difficulty()
 
+        sv_date = meta.get("date", "?")
         if dry_run:
-            print(f"  ✓ [{poi['type']}] {name_label[:40]} ({poi['lat']:.5f},{poi['lng']:.5f}) heading={head:.0f}° [{diff.upper()}]")
+            mural_flag = " [MURAL-FOV]" if poi.get("mural") else ""
+            print(f"  ✓ [{poi['type']}] {name_label[:40]} ({poi['lat']:.5f},{poi['lng']:.5f}) heading={head:.0f}° [{diff.upper()}] sv:{sv_date}{mural_flag}")
             created += 1
             continue
 
-        print(f"  [{created+1}/{count}] {name_label[:35]} [{diff.upper()}]", end=" ", flush=True)
+        print(f"  [{created+1}/{count}] {name_label[:35]} [{diff.upper()}] sv:{sv_date}", end=" ", flush=True)
 
-        local = sv_image(sv_lat, sv_lng, head)
+        local = sv_image(sv_lat, sv_lng, head, mural=poi.get("mural", False))
         if not local:
             errors += 1
             print("✗ image")
@@ -382,7 +414,9 @@ def main():
 
         from datetime import datetime, timezone, timedelta
         expires_at = None if pending else (datetime.now(timezone.utc) + timedelta(hours=ttl_h)).isoformat()
-        caption = poi["name"] if poi["name"] else ""
+        caption = poi["name"] if poi["name"] else poi["type"]
+        if sv_date and sv_date != "?":
+            caption = f"{caption} (sv:{sv_date})" if caption else f"sv:{sv_date}"
         if insert_trace(poi["lat"], poi["lng"], public_url, diff, solve_r, notify_r, place_name, caption, expires_at, pending=pending):
             print(f"✓  ({poi['lat']:.5f},{poi['lng']:.5f}) → {head:.0f}°")
             existing.add(place_name)

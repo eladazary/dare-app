@@ -7,6 +7,8 @@ import { supabase } from '@/lib/supabase';
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
   }),
@@ -32,7 +34,9 @@ async function registerPushToken(): Promise<string | null> {
     });
   }
 
-  const token = await Notifications.getExpoPushTokenAsync();
+  const token = await Notifications.getExpoPushTokenAsync({
+    projectId: '0595e1e5-5722-4807-97d9-f4949d4d1bdd',
+  });
   return token.data;
 }
 

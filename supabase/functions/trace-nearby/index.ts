@@ -40,7 +40,11 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         type: "trace_nearby",
         user_ids: [user_id],
-        data: { distance_meters: Math.round(closest.distance_meters) },
+        data: {
+          trace_id: closest.id,
+          distance_meters: Math.round(closest.distance_meters),
+          difficulty: closest.difficulty,
+        },
       }),
     });
   }
