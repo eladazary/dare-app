@@ -239,34 +239,21 @@ export default function MapScreen() {
   const startedAtRef = useRef<number>(0);
 
   // Drag handle to snap between fullscreen / half / minimized
+  // Drag only toggles HALF ↔ MINIMIZED. Fullscreen is triggered by tapping the photo.
   const handlePanResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 8,
       onPanResponderMove: (_, gs) => {
         const base = (slideAnim as any)._value ?? PANEL_HALF;
-        const next = Math.max(PANEL_FULLSCREEN, Math.min(PANEL_MINIMIZED, base + gs.dy));
+        const next = Math.max(PANEL_HALF, Math.min(PANEL_MINIMIZED, base + gs.dy));
         slideAnim.setValue(next);
       },
       onPanResponderRelease: (_, gs) => {
-        const cur = (slideAnim as any)._value ?? PANEL_HALF;
-        let target: number;
-        if (gs.vy < -0.5) {
-          target = PANEL_FULLSCREEN;
-        } else if (gs.vy > 0.5) {
-          target = cur <= PANEL_HALF ? PANEL_MINIMIZED : PANEL_HALF;
-        } else {
-          const dists = [
-            { v: PANEL_FULLSCREEN, d: Math.abs(cur - PANEL_FULLSCREEN) },
-            { v: PANEL_HALF,       d: Math.abs(cur - PANEL_HALF) },
-            { v: PANEL_MINIMIZED,  d: Math.abs(cur - PANEL_MINIMIZED) },
-          ];
-          target = dists.sort((a, b) => a.d - b.d)[0].v;
-        }
-        panelMinimized.current = target === PANEL_MINIMIZED;
-        setPanelSnap(target === PANEL_FULLSCREEN ? 'fullscreen' : target === PANEL_MINIMIZED ? 'minimized' : 'half');
-        Animated.spring(slideAnim, {
-          toValue: target, useNativeDriver: true, bounciness: target === PANEL_FULLSCREEN ? 2 : 0,
-        }).start();
+        const minimize = gs.dy > 40 || gs.vy > 0.5;
+        panelMinimized.current = minimize;
+        const target = minimize ? PANEL_MINIMIZED : PANEL_HALF;
+        setPanelSnap(minimize ? 'minimized' : 'half');
+        Animated.spring(slideAnim, { toValue: target, useNativeDriver: true, bounciness: 0 }).start();
       },
     })
   ).current;
@@ -288,7 +275,8 @@ export default function MapScreen() {
     // latDelta = circleDiameter / (0.50 * 0.65) = circleDiameter / 0.325
     // Center at 25% from top = 25% above map center → shift south by latDelta * 0.25
     const circleDiameterDeg = (trace.notify_radius_meters * 2) / 111320;
-    const latDelta  = Math.max(0.008, circleDiameterDeg / 0.325);
+    // Cap at 0.04 (~4km view) to prevent extreme zoom-out on bad data
+    const latDelta  = Math.min(0.04, Math.max(0.008, circleDiameterDeg / 0.325));
     const lngDelta  = latDelta * 0.85;
     const centerLat = trace.lat - latDelta * 0.25;
     mapRef.current?.animateToRegion(
@@ -715,16 +703,20 @@ export default function MapScreen() {
       {activeTrace && (
         <>
           <Animated.View style={[styles.panel, { transform: [{ translateY: slideAnim }] }]}>
-            <SafeAreaView
-              edges={panelSnap === 'fullscreen' ? ['top'] : []}
-              style={panelSnap === 'fullscreen' ? styles.panelFullscreenSafe : undefined}
-            >
+            {/* Always apply top SafeArea so handle isn't hidden behind notch when dragging */}
+            <SafeAreaView edges={['top']} style={styles.panelSafe}>
               <View style={styles.panelHandle} {...handlePanResponder.panHandlers}>
                 {panelSnap !== 'fullscreen' && <View style={styles.handleBar} />}
                 <TouchableOpacity style={styles.mapBackBtn} onPress={() => {
-                  panelMinimized.current = false;
-                  setPanelSnap('half');
-                  Animated.spring(slideAnim, { toValue: PANEL_HALF, useNativeDriver: true, bounciness: 4 }).start();
+                  if (panelSnap === 'fullscreen') {
+                    // Fullscreen → close trace entirely, return to normal map
+                    closeTrace();
+                  } else {
+                    // Half/minimized → snap to half to see the zone circle
+                    panelMinimized.current = false;
+                    setPanelSnap('half');
+                    Animated.spring(slideAnim, { toValue: PANEL_HALF, useNativeDriver: true, bounciness: 4 }).start();
+                  }
                 }}>
                   <Text style={styles.mapBackText}>← MAP</Text>
                 </TouchableOpacity>
@@ -765,6 +757,10 @@ export default function MapScreen() {
                 xpMultiplier={activeTrace.xp_multiplier ?? 1}
                 onSubmit={handleSubmit}
                 onDismiss={panelSnap !== 'fullscreen' ? closeTrace : undefined}
+                onExpand={() => {
+                  setPanelSnap('fullscreen');
+                  Animated.spring(slideAnim, { toValue: PANEL_FULLSCREEN, useNativeDriver: true, bounciness: 2 }).start();
+                }}
               />
               <Text style={styles.solveCount}>
                 {activeTrace.solve_count === 0
@@ -898,7 +894,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
   },
-  panelFullscreenSafe: {
+  panelSafe: {
     backgroundColor: COLORS.navyMid,
   },
   panelHandle: {

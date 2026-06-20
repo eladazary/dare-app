@@ -46,13 +46,14 @@ interface TraceCardProps {
   xpMultiplier?: number;
   onSubmit?: () => void;
   onDismiss?: () => void;
+  onExpand?: () => void;
   // legacy compat
   segments?: ClueSegment[];
 }
 
 export default function TraceCard({
   id, referencePhotoUrl, clue, difficulty, attemptsLeft, maxAttempts,
-  stage, distanceMeters, notifyRadiusMeters, expiresAt, xpMultiplier = 1, onSubmit, onDismiss,
+  stage, distanceMeters, notifyRadiusMeters, expiresAt, xpMultiplier = 1, onSubmit, onDismiss, onExpand,
 }: TraceCardProps) {
   const isSolved  = stage === 'solved';
   const canSubmit = stage === 'close' || stage === 'solved';
@@ -98,8 +99,13 @@ export default function TraceCard({
         </View>
       </View>
 
-      {/* Reference photo */}
-      <View style={styles.photoContainer}>
+      {/* Reference photo — tap to go fullscreen */}
+      <TouchableOpacity
+        style={styles.photoContainer}
+        activeOpacity={onExpand ? 0.85 : 1}
+        onPress={onExpand}
+        disabled={!onExpand}
+      >
         {referencePhotoUrl ? (
           <>
             {imgLoading && (
@@ -130,7 +136,7 @@ export default function TraceCard({
             <Text style={styles.photoPlaceholderText}>Photo loading...</Text>
           </View>
         )}
-      </View>
+      </TouchableOpacity>
 
       {/* Context clue (shown after solving) */}
       {clue && isSolved && (
