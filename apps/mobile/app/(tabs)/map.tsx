@@ -10,7 +10,7 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
 } from 'react-native';
-import MapView, { Marker, Polygon, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -99,24 +99,38 @@ function difficultyToStage(
   return 'locked';
 }
 
-// ── Scanning reticle map marker ──────────────────────────────────────────────
-function ReticleMarker({ color, isActive, xpMultiplier = 1 }: {
-  color: string; isActive: boolean; xpMultiplier?: number;
+// ── Photo thumbnail map marker ────────────────────────────────────────────────
+import { Image as RNImage } from 'react-native';
+
+function PhotoMarker({ photoUrl, color, isActive, xpMultiplier = 1 }: {
+  photoUrl: string | null; color: string; isActive: boolean; xpMultiplier?: number;
 }) {
-  const col = isActive ? color : `${color}60`;
-  const fill = isActive ? color : 'transparent';
+  const [ready, setReady] = React.useState(false);
+  const border = isActive ? color : `${color}80`;
   return (
-    <View style={{ width: 38, height: 38, alignItems: 'center', justifyContent: 'center' }}>
-      {/* Corner brackets */}
-      <View style={{ position: 'absolute', top: 0,  left: 0,  width: 9, height: 9, borderTopWidth: 1.5, borderLeftWidth: 1.5,  borderColor: col }} />
-      <View style={{ position: 'absolute', top: 0,  right: 0, width: 9, height: 9, borderTopWidth: 1.5, borderRightWidth: 1.5, borderColor: col }} />
-      <View style={{ position: 'absolute', bottom: 0, left: 0,  width: 9, height: 9, borderBottomWidth: 1.5, borderLeftWidth: 1.5,  borderColor: col }} />
-      <View style={{ position: 'absolute', bottom: 0, right: 0, width: 9, height: 9, borderBottomWidth: 1.5, borderRightWidth: 1.5, borderColor: col }} />
-      {/* Center dot */}
-      <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: fill, borderWidth: 1.5, borderColor: col }} />
-      {/* XP badge */}
+    <View style={{
+      width: 54, height: 54, borderRadius: 8,
+      borderWidth: 2, borderColor: border,
+      overflow: 'hidden', backgroundColor: COLORS.navyMid,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.6, shadowRadius: 4, elevation: 6,
+    }}>
+      {photoUrl ? (
+        <RNImage
+          source={{ uri: photoUrl }}
+          style={{ width: '100%', height: '100%' }}
+          resizeMode="cover"
+          onLoadEnd={() => setReady(true)}
+        />
+      ) : (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: COLORS.concrete, fontSize: 20 }}>◎</Text>
+        </View>
+      )}
+      {/* Difficulty color strip at bottom */}
+      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 3, backgroundColor: border }} />
       {xpMultiplier > 1 && (
-        <View style={{ position: 'absolute', top: -2, right: -4, backgroundColor: color, borderRadius: 3, paddingHorizontal: 3, paddingVertical: 1 }}>
+        <View style={{ position: 'absolute', top: 2, right: 2, backgroundColor: color, borderRadius: 3, paddingHorizontal: 3, paddingVertical: 1 }}>
           <Text style={{ fontSize: 7, color: COLORS.navy, fontFamily: FONTS.monoBold }}>{xpMultiplier}×</Text>
         </View>
       )}
@@ -372,29 +386,19 @@ export default function MapScreen() {
           longitudeDelta: 0.012,
         }}
       >
-        {traces.filter(t => !t.already_solved).map((trace) => {
-          const visible = diffFilter.has(trace.difficulty);
+        {traces.filter(t => !t.already_solved && diffFilter.has(t.difficulty)).map((trace) => {
           const isActive = trace.distance_meters <= trace.notify_radius_meters;
           const col = DIFF_COLOR[trace.difficulty] ?? COLORS.amber;
-          // Stable offset derived from trace ID so reticle doesn't sit on the exact answer spot
-          const visualRadius = { easy: 80, medium: 120, hard: 160, legendary: 200 }[trace.difficulty] ?? 100;
-          // The circle shows the search zone; the reticle is somewhere inside it
-          const seed = trace.id.charCodeAt(0) + trace.id.charCodeAt(4);
-          const angle = (seed * 137.5) % 360; // golden angle spread
-          const offsetFrac = 0.3 + (seed % 30) / 100; // 30–60% of radius
-          const offsetLat = Math.cos(angle * Math.PI / 180) * offsetFrac * visualRadius / 111320;
-          const offsetLng = Math.sin(angle * Math.PI / 180) * offsetFrac * visualRadius / (111320 * Math.cos(trace.lat * Math.PI / 180));
-
-          if (!visible) return null;
           return (
             <Marker
               key={trace.id}
-              coordinate={{ latitude: trace.lat + offsetLat, longitude: trace.lng + offsetLng }}
+              coordinate={{ latitude: trace.lat, longitude: trace.lng }}
               onPress={() => openTrace(trace)}
               anchor={{ x: 0.5, y: 0.5 }}
-              tracksViewChanges={false}
+              tracksViewChanges
             >
-              <ReticleMarker
+              <PhotoMarker
+                photoUrl={trace.reference_photo_url}
                 color={col}
                 isActive={isActive}
                 xpMultiplier={trace.xp_multiplier ?? 1}
@@ -402,22 +406,6 @@ export default function MapScreen() {
             </Marker>
           );
         })}
-
-        {/* Fog of war — revealed zones */}
-        {revealedZones.map((zone, i) => (
-          <Polygon
-            key={`zone-${i}`}
-            coordinates={[
-              { latitude: zone.lat - 0.0005, longitude: zone.lng - 0.0005 },
-              { latitude: zone.lat + 0.0005, longitude: zone.lng - 0.0005 },
-              { latitude: zone.lat + 0.0005, longitude: zone.lng + 0.0005 },
-              { latitude: zone.lat - 0.0005, longitude: zone.lng + 0.0005 },
-            ]}
-            fillColor="rgba(184,134,11,0.10)"
-            strokeColor="rgba(184,134,11,0.25)"
-            strokeWidth={0.5}
-          />
-        ))}
 
         {/* Ghost trail pins — blurred friend activity */}
         {ghostTrails.map((ghost) => (

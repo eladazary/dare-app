@@ -79,15 +79,9 @@ export default function TraceCard({
         )}
       </View>
 
-      {/* Reference photo — locked until within notify radius */}
+      {/* Reference photo */}
       <View style={styles.photoContainer}>
-        {stage === 'locked' ? (
-          <View style={styles.photoLocked}>
-            <Text style={styles.photoLockedIcon}>◎</Text>
-            <Text style={styles.photoLockedTitle}>CLASSIFIED</Text>
-            <Text style={styles.photoLockedSub}>Walk closer to reveal the target</Text>
-          </View>
-        ) : referencePhotoUrl ? (
+        {referencePhotoUrl ? (
           <>
             {imgLoading && (
               <View style={styles.photoLoading}>
@@ -119,7 +113,7 @@ export default function TraceCard({
         )}
       </View>
 
-      {/* Context clue (shown after solving or as optional hint) */}
+      {/* Context clue (shown after solving) */}
       {clue && isSolved && (
         <View style={styles.captionBox}>
           <Text style={styles.captionLabel}>ABOUT THIS PLACE</Text>
