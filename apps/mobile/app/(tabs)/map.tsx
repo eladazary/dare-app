@@ -274,8 +274,8 @@ export default function MapScreen() {
     // Visible area = latDelta * 0.50. Circle should occupy 65% of that.
     // latDelta = circleDiameter / (0.50 * 0.65) = circleDiameter / 0.325
     // Center at 25% from top = 25% above map center → shift south by latDelta * 0.25
-    const circleDiameterDeg = (trace.notify_radius_meters * 2) / 111320;
-    // Cap at 0.04 (~4km view) to prevent extreme zoom-out on bad data
+    // Zoom to show the solve circle (×3 for display) in the top 50% of screen
+    const circleDiameterDeg = (trace.solve_radius_meters * 3 * 2) / 111320;
     const latDelta  = Math.min(0.04, Math.max(0.008, circleDiameterDeg / 0.325));
     const lngDelta  = latDelta * 0.85;
     const centerLat = trace.lat - latDelta * 0.25;
@@ -511,7 +511,7 @@ export default function MapScreen() {
         {activeTrace && (
           <Circle
             center={{ latitude: activeTrace.lat, longitude: activeTrace.lng }}
-            radius={activeTrace.notify_radius_meters}
+            radius={activeTrace.solve_radius_meters * 3}
             fillColor={`${DIFF_COLOR[activeTrace.difficulty] ?? COLORS.amber}0D`}
             strokeColor={`${DIFF_COLOR[activeTrace.difficulty] ?? COLORS.amber}90`}
             strokeWidth={1.5}
@@ -706,20 +706,22 @@ export default function MapScreen() {
             {/* Always apply top SafeArea so handle isn't hidden behind notch when dragging */}
             <SafeAreaView edges={['top']} style={styles.panelSafe}>
               <View style={styles.panelHandle} {...handlePanResponder.panHandlers}>
-                {panelSnap !== 'fullscreen' && <View style={styles.handleBar} />}
-                <TouchableOpacity style={styles.mapBackBtn} onPress={() => {
-                  if (panelSnap === 'fullscreen') {
-                    // Fullscreen → close trace entirely, return to normal map
-                    closeTrace();
-                  } else {
-                    // Half/minimized → snap to half to see the zone circle
-                    panelMinimized.current = false;
-                    setPanelSnap('half');
-                    Animated.spring(slideAnim, { toValue: PANEL_HALF, useNativeDriver: true, bounciness: 4 }).start();
-                  }
-                }}>
-                  <Text style={styles.mapBackText}>← MAP</Text>
-                </TouchableOpacity>
+                {/* Spacer left side for balance */}
+                <View style={{ flex: 1 }} />
+                {/* No drag bar — tap photo to go fullscreen */}
+                <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                  <TouchableOpacity style={styles.mapBackBtn} onPress={() => {
+                    if (panelSnap === 'fullscreen') {
+                      closeTrace();
+                    } else {
+                      panelMinimized.current = false;
+                      setPanelSnap('half');
+                      Animated.spring(slideAnim, { toValue: PANEL_HALF, useNativeDriver: true, bounciness: 4 }).start();
+                    }
+                  }}>
+                    <Text style={styles.mapBackText}>← MAP</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </SafeAreaView>
 
@@ -900,11 +902,8 @@ const styles = StyleSheet.create({
   panelHandle: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 12,
-    paddingBottom: 8,
+    paddingVertical: 14,
     paddingHorizontal: 16,
-    position: 'relative',
   },
   handleBar: {
     width: 36,
@@ -913,10 +912,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.navyLight,
   },
   mapBackBtn: {
-    position: 'absolute',
-    right: 16,
     paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: `${COLORS.amber}90`,
