@@ -719,9 +719,12 @@ export default function MapScreen() {
           <Animated.View style={[styles.panel, { transform: [{ translateY: slideAnim }] }]}>
             <View style={styles.panelHandle} {...handlePanResponder.panHandlers}>
               <View style={styles.handleBar} />
-              {/* STAND DOWN visible at all panel states including minimized */}
-              <TouchableOpacity style={styles.standDownHandle} onPress={closeTrace}>
-                <Text style={styles.standDownHandleText}>STAND DOWN</Text>
+              {/* ← MAP snaps back to half-screen to see the zone circle */}
+              <TouchableOpacity style={styles.mapBackBtn} onPress={() => {
+                panelMinimized.current = false;
+                Animated.spring(slideAnim, { toValue: PANEL_HALF, useNativeDriver: true, bounciness: 4 }).start();
+              }}>
+                <Text style={styles.mapBackText}>← MAP</Text>
               </TouchableOpacity>
             </View>
 
@@ -904,17 +907,20 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: COLORS.navyLight,
   },
-  standDownHandle: {
-    paddingHorizontal: 14,
+  mapBackBtn: {
+    position: 'absolute',
+    right: 16,
+    paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: `${COLORS.concrete}60`,
+    borderColor: `${COLORS.amber}80`,
+    backgroundColor: `${COLORS.amber}15`,
   },
-  standDownHandleText: {
+  mapBackText: {
     fontFamily: FONTS.monoBold,
     fontSize: 9,
-    color: COLORS.concrete,
+    color: COLORS.amber,
     letterSpacing: 1.5,
   },
   failToast: {
