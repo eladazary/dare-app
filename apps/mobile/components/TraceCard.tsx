@@ -41,6 +41,7 @@ interface TraceCardProps {
   maxAttempts: number;
   stage: TraceStage;
   distanceMeters?: number;
+  notifyRadiusMeters?: number;
   expiresAt?: string | null;
   xpMultiplier?: number;
   onSubmit?: () => void;
@@ -50,7 +51,7 @@ interface TraceCardProps {
 
 export default function TraceCard({
   id, referencePhotoUrl, clue, difficulty, attemptsLeft, maxAttempts,
-  stage, distanceMeters, expiresAt, xpMultiplier = 1, onSubmit,
+  stage, distanceMeters, notifyRadiusMeters, expiresAt, xpMultiplier = 1, onSubmit,
 }: TraceCardProps) {
   const isSolved  = stage === 'solved';
   const canSubmit = stage === 'close' || stage === 'solved';
@@ -70,13 +71,23 @@ export default function TraceCard({
             <Text style={styles.multBadge}>{xpMultiplier}× XP</Text>
           )}
         </View>
-        {distanceMeters != null && !isSolved && (
-          <View style={[styles.rangeBadge, canSubmit && styles.rangeBadgeIn]}>
-            <Text style={[styles.rangeText, canSubmit && styles.rangeTextIn]}>
-              {canSubmit ? '✓ You\'re in range' : 'Find the spot'}
-            </Text>
-          </View>
-        )}
+        {distanceMeters != null && !isSolved && (() => {
+          const distToEdge = notifyRadiusMeters
+            ? Math.max(0, Math.round(distanceMeters - notifyRadiusMeters))
+            : 0;
+          const insideZone = distToEdge === 0;
+          return (
+            <View style={[styles.rangeBadge, insideZone && styles.rangeBadgeIn]}>
+              <Text style={[styles.rangeText, insideZone && styles.rangeTextIn]}>
+                {canSubmit
+                  ? '✓ Found it'
+                  : insideZone
+                  ? 'Search the zone'
+                  : `${distToEdge < 1000 ? `${distToEdge}m` : `${(distToEdge/1000).toFixed(1)}km`} to zone`}
+              </Text>
+            </View>
+          );
+        })()}
       </View>
 
       {/* Reference photo */}

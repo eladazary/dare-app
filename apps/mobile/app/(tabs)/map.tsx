@@ -10,7 +10,7 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
 } from 'react-native';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Marker, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -466,6 +466,17 @@ export default function MapScreen() {
           );
         })}
 
+        {/* Search zone — revealed when player opens a trace */}
+        {activeTrace && (
+          <Circle
+            center={{ latitude: activeTrace.lat, longitude: activeTrace.lng }}
+            radius={activeTrace.notify_radius_meters}
+            fillColor={`${DIFF_COLOR[activeTrace.difficulty] ?? COLORS.amber}0D`}
+            strokeColor={`${DIFF_COLOR[activeTrace.difficulty] ?? COLORS.amber}80`}
+            strokeWidth={1.5}
+          />
+        )}
+
         {/* Ghost trail pins — blurred friend activity */}
         {ghostTrails.map((ghost) => (
           <Marker
@@ -687,6 +698,7 @@ export default function MapScreen() {
                 maxAttempts={activeTrace.max_attempts}
                 stage={stage}
                 distanceMeters={Math.round(activeTrace.distance_meters)}
+                notifyRadiusMeters={activeTrace.notify_radius_meters}
                 expiresAt={activeTrace.expires_at}
                 xpMultiplier={activeTrace.xp_multiplier ?? 1}
                 onSubmit={handleSubmit}
