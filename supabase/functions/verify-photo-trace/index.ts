@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+const GOOGLE_API_KEY = Deno.env.get("LLM_API_KEY");
 const OLLAMA_URL = Deno.env.get("OLLAMA_URL"); // e.g. http://192.168.1.x:11434 or https://xxxx.ngrok-free.app
 const OLLAMA_MODEL = Deno.env.get("OLLAMA_MODEL") ?? "llava:13b";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -44,17 +45,27 @@ async function compareWithOllama(
 ): Promise<{ match: boolean; detail: string }> {
   const [ref, sub] = await Promise.all([urlToBase64(refUrl), urlToBase64(submitUrl)]);
 
-  // Ollama /api/generate supports images as a base64 array
-  const res = await fetch(`${OLLAMA_URL}/api/generate`, {
+  // Use OpenAI-compatible /v1/chat/completions for clearer multi-image handling
+  const res = await fetch(`${OLLAMA_URL}/v1/chat/completions`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "authorization": "Bearer ollama" },
     body: JSON.stringify({
       model: OLLAMA_MODEL,
-      prompt: PHOTO_PROMPT,
-      images: [ref.data, sub.data], // [reference, submission]
       stream: false,
+      think: false,
+      max_tokens: 10,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: "Image 1 (reference):" },
+          { type: "image_url", image_url: { url: `data:${ref.mediaType};base64,${ref.data}` } },
+          { type: "text", text: "Image 2 (submission):" },
+          { type: "image_url", image_url: { url: `data:${sub.mediaType};base64,${sub.data}` } },
+          { type: "text", text: PHOTO_PROMPT },
+        ],
+      }],
     }),
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(90000),
   });
 
   if (!res.ok) {
@@ -63,7 +74,7 @@ async function compareWithOllama(
   }
 
   const json = await res.json();
-  const text: string = json.response ?? "";
+  const text: string = json.choices?.[0]?.message?.content ?? "";
   console.log("[ollama] raw response:", text.slice(0, 300));
 
   const upper = text.toUpperCase().trim();
@@ -131,10 +142,58 @@ async function compareWithAnthropic(
   return { match: verdict === "MATCH", detail };
 }
 
+// ── Google Gemini (AI Studio) ────────────────────────────────────────────────
+async function compareWithGemini(
+  refUrl: string,
+  submitUrl: string,
+): Promise<{ match: boolean; detail: string }> {
+  if (!GOOGLE_API_KEY) throw new Error("No GOOGLE_API_KEY (LLM_API_KEY) set");
+
+  const [ref, sub] = await Promise.all([urlToBase64(refUrl), urlToBase64(submitUrl)]);
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: "Image 1 (reference — the target spot):" },
+            { inline_data: { mime_type: ref.mediaType, data: ref.data } },
+            { text: "Image 2 (player submission):" },
+            { inline_data: { mime_type: sub.mediaType, data: sub.data } },
+            { text: PHOTO_PROMPT },
+          ],
+        }],
+        generationConfig: { maxOutputTokens: 10, temperature: 0 },
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Gemini error ${res.status}: ${err}`);
+  }
+
+  const json = await res.json();
+  const text: string = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  console.log("[gemini] raw response:", text.slice(0, 200));
+
+  const upper = text.toUpperCase().trim();
+  const isNo = upper.startsWith("NO") || upper.includes(" NO ") || upper.includes("\nNO");
+  const isYes = upper.startsWith("YES") || upper.includes(" YES") || upper.includes("\nYES");
+
+  if (isNo && !isYes) return { match: false, detail: text.trim() };
+  if (isYes) return { match: true, detail: text.trim() };
+  throw new Error("ambiguous_response: " + text.slice(0, 100));
+}
+
 function comparePhotos(refUrl: string, submitUrl: string) {
-  // Prefer local Ollama when available — zero cost, private
   if (OLLAMA_URL) return compareWithOllama(refUrl, submitUrl);
-  return compareWithAnthropic(refUrl, submitUrl);
+  if (GOOGLE_API_KEY) return compareWithGemini(refUrl, submitUrl);
+  if (ANTHROPIC_API_KEY) return compareWithAnthropic(refUrl, submitUrl);
+  throw new Error("No vision provider configured (set OLLAMA_URL, LLM_API_KEY, or ANTHROPIC_API_KEY)");
 }
 
 Deno.serve(async (req) => {
@@ -149,28 +208,28 @@ Deno.serve(async (req) => {
     });
 
   try {
-    const { trace_id, selfie_url, user_lat, user_lng } = await req.json();
+    const { trace_id, selfie_url, user_lat, user_lng, trace_lat, trace_lng, solve_radius } = await req.json();
 
     if (!trace_id || !selfie_url || user_lat == null || user_lng == null) {
       return json({ valid: false, reason: "bad_request" }, 400);
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    // GPS gate (using values passed from client — avoids PostGIS query)
+    const distM = haversineMeters(user_lat, user_lng, trace_lat, trace_lng);
+    if (distM > solve_radius) {
+      return json({ valid: false, reason: "gps_fail", distance_m: Math.round(distM) });
+    }
 
+    // Fetch only the reference photo URL
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: trace, error: traceErr } = await supabase
       .from("traces")
-      .select("lat, lng, solve_radius_meters, reference_photo_url")
+      .select("reference_photo_url")
       .eq("id", trace_id)
       .single();
 
     if (traceErr || !trace) {
       return json({ valid: false, reason: "trace_not_found" }, 404);
-    }
-
-    // GPS gate
-    const distM = haversineMeters(user_lat, user_lng, trace.lat, trace.lng);
-    if (distM > trace.solve_radius_meters) {
-      return json({ valid: false, reason: "gps_fail", distance_m: Math.round(distM) });
     }
 
     // Photo gate — skip for GPS-only traces (no reference photo)

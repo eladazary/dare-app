@@ -238,6 +238,9 @@ export default function MapScreen() {
             selfie_url: selfiePublicUrl,
             user_lat: location.lat,
             user_lng: location.lng,
+            trace_lat: activeTrace.lat,
+            trace_lng: activeTrace.lng,
+            solve_radius: effRadius,
           }),
         }
       );
