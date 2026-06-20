@@ -105,9 +105,10 @@ function difficultyToStage(
 
 const PING_SIZE = 44; // base ring diameter
 
-function SonarPing({ color, isActive, xpMultiplier = 1 }: {
-  color: string; isActive: boolean; xpMultiplier?: number;
+function SonarPing({ color, isActive, xpMultiplier = 1, hidden = false }: {
+  color: string; isActive: boolean; xpMultiplier?: number; hidden?: boolean;
 }) {
+  if (hidden) return <View style={{ width: 1, height: 1 }} />;
   const r1s = useRef(new Animated.Value(0.2)).current;
   const r1o = useRef(new Animated.Value(1)).current;
   const r2s = useRef(new Animated.Value(0.2)).current;
@@ -241,12 +242,15 @@ export default function MapScreen() {
       setSolveMultiplier(r < 0.60 ? 1 : r < 0.85 ? 2 : r < 0.97 ? 3 : 5);
     }
 
-    // Zoom map so the search zone circle fills the top ~40% of screen
-    // (card covers bottom 60%). Circle diameter fits ~80% of the visible area.
-    // Shift center lat downward so the zone sits in the upper visible portion.
-    const latDelta = Math.max(0.006, (trace.notify_radius_meters * 2) / 111320 / 0.32);
-    const lngDelta = latDelta * 0.9;
-    const centerLat = trace.lat - latDelta * 0.28; // push zone into upper 40%
+    // Zoom map so the full circle fits in the top 40% of screen (card = bottom 60%).
+    // Formula: visible area = latDelta * 0.4, circle should occupy 65% of that.
+    // So latDelta = circleDiameter / (0.4 * 0.65) = circleDiameter / 0.26
+    // Center is shifted south so the circle sits in the middle of the top 40%.
+    const circleDiameterDeg = (trace.notify_radius_meters * 2) / 111320;
+    const latDelta  = Math.max(0.008, circleDiameterDeg / 0.26);
+    const lngDelta  = latDelta * 0.85;
+    // Circle center should be at 20% from top = 30% above map center
+    const centerLat = trace.lat - latDelta * 0.30;
     mapRef.current?.animateToRegion(
       { latitude: centerLat, longitude: trace.lng, latitudeDelta: latDelta, longitudeDelta: lngDelta },
       500
@@ -448,22 +452,25 @@ export default function MapScreen() {
           longitudeDelta: 0.012,
         }}
       >
-        {/* Sonar pings — hidden when a trace is selected (circle takes over) */}
-        {!activeTrace && traces.filter(t => !t.already_solved && diffFilter.has(t.difficulty)).map((trace) => {
+        {/* Sonar pings — always rendered to avoid react-native-maps remount bug.
+            Visually hidden when a trace is open (circle takes over). */}
+        {traces.filter(t => !t.already_solved && diffFilter.has(t.difficulty)).map((trace) => {
           const isActive = trace.distance_meters <= trace.notify_radius_meters;
           const col      = DIFF_COLOR[trace.difficulty] ?? COLORS.amber;
+          const hidden   = !!activeTrace;
           return (
             <Marker
               key={trace.id}
               coordinate={{ latitude: trace.lat, longitude: trace.lng }}
-              onPress={() => openTrace(trace)}
+              onPress={() => !hidden && openTrace(trace)}
               anchor={{ x: 0.5, y: 0.5 }}
-              tracksViewChanges={isActive}
+              tracksViewChanges={isActive && !hidden}
             >
               <SonarPing
                 color={col}
                 isActive={isActive}
                 xpMultiplier={trace.xp_multiplier ?? 1}
+                hidden={hidden}
               />
             </Marker>
           );
