@@ -8,7 +8,6 @@ import {
   Animated,
   Dimensions,
   ScrollView,
-  PanResponder,
 } from 'react-native';
 import MapView, { Marker, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useRouter } from 'expo-router';
@@ -190,17 +189,15 @@ function SonarPing({ color, isActive, xpMultiplier = 1, hidden = false }: {
 }
 
 // Panel is 100% tall, translateY positions it:
-const PANEL_FULLSCREEN = 0;                   // covers entire screen
-const PANEL_HALF       = SCREEN_H * 0.50;     // bottom 50% visible (default open)
-const PANEL_MINIMIZED  = SCREEN_H * 0.88;     // ~90px visible (handle + STAND DOWN)
-const PANEL_CLOSED     = SCREEN_H;            // fully off screen
+const PANEL_FULLSCREEN = 0;               // covers entire screen
+const PANEL_HALF       = SCREEN_H * 0.50; // bottom 50% visible (default open)
+const PANEL_CLOSED     = SCREEN_H;        // fully off screen
 
 export default function MapScreen() {
   const router = useRouter();
   const mapRef = useRef<MapView>(null);
   const insets = useSafeAreaInsets();
   const slideAnim    = useRef(new Animated.Value(SCREEN_H)).current;
-  const panelMinimized = useRef(false);
 
   // undefined = not yet loaded, null = loaded but not found, string = ready
   const [publicUserId, setPublicUserId] = useState<string | null | undefined>(undefined);
@@ -223,7 +220,7 @@ export default function MapScreen() {
   const [seeding, setSeeding] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [failReason, setFailReason] = useState<'gps_fail' | 'photo_fail' | null>(null);
-  const [panelSnap, setPanelSnap] = useState<'half' | 'fullscreen' | 'minimized'>('half');
+  const [panelSnap, setPanelSnap] = useState<'half' | 'fullscreen'>('half');
 
   // Load user level + public ID for radius scaling and fog of war
   useEffect(() => {
@@ -239,25 +236,6 @@ export default function MapScreen() {
   const { pendingRescue, setPendingRescue } = useRescueStore();
   const startedAtRef = useRef<number>(0);
 
-  // Drag handle to snap between fullscreen / half / minimized
-  // Drag only toggles HALF ↔ MINIMIZED. Fullscreen is triggered by tapping the photo.
-  const handlePanResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 8,
-      onPanResponderMove: (_, gs) => {
-        const base = (slideAnim as any)._value ?? PANEL_HALF;
-        const next = Math.max(PANEL_HALF, Math.min(PANEL_MINIMIZED, base + gs.dy));
-        slideAnim.setValue(next);
-      },
-      onPanResponderRelease: (_, gs) => {
-        const minimize = gs.dy > 40 || gs.vy > 0.5;
-        panelMinimized.current = minimize;
-        const target = minimize ? PANEL_MINIMIZED : PANEL_HALF;
-        setPanelSnap(minimize ? 'minimized' : 'half');
-        Animated.spring(slideAnim, { toValue: target, useNativeDriver: true, bounciness: 0 }).start();
-      },
-    })
-  ).current;
 
   const openTrace = useCallback((trace: NearbyTrace) => {
     setActiveTrace(trace);
@@ -286,13 +264,13 @@ export default function MapScreen() {
       500
     );
 
-    panelMinimized.current = false;
+
     setPanelSnap('half');
     Animated.spring(slideAnim, { toValue: PANEL_HALF, useNativeDriver: true, bounciness: 4 }).start();
   }, [slideAnim]);
 
   const closeTrace = useCallback(() => {
-    panelMinimized.current = false;
+
     Animated.timing(slideAnim, { toValue: PANEL_CLOSED, duration: 250, useNativeDriver: true }).start(() => {
       setActiveTrace(null);
       setSolveResult(null);
@@ -707,7 +685,7 @@ export default function MapScreen() {
           <Animated.View style={[styles.panel, { transform: [{ translateY: slideAnim }] }]}>
             {/* Top padding only when fullscreen — half mode doesn't need notch clearance */}
             <View style={[styles.panelSafe, panelSnap === 'fullscreen' && { paddingTop: insets.top }]}>
-              <View style={styles.panelHandle} {...handlePanResponder.panHandlers}>
+              <View style={styles.panelHandle}>
                 {/* Spacer left side for balance */}
                 <View style={{ flex: 1 }} />
                 {/* No drag bar — tap photo to go fullscreen */}
@@ -716,7 +694,7 @@ export default function MapScreen() {
                     if (panelSnap === 'fullscreen') {
                       closeTrace();
                     } else {
-                      panelMinimized.current = false;
+                  
                       setPanelSnap('half');
                       Animated.spring(slideAnim, { toValue: PANEL_HALF, useNativeDriver: true, bounciness: 4 }).start();
                     }
