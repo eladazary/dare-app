@@ -189,9 +189,11 @@ function SonarPing({ color, isActive, xpMultiplier = 1, hidden = false }: {
   );
 }
 
-// Panel snaps to these two positions (via slideAnim translateY)
-const PANEL_EXPANDED  = 0;                    // full 50% panel visible
-const PANEL_MINIMIZED = SCREEN_H * 0.38;      // only ~90px visible (handle + header)
+// Panel is 100% tall, translateY positions it:
+const PANEL_FULLSCREEN = 0;                   // covers entire screen
+const PANEL_HALF       = SCREEN_H * 0.50;     // bottom 50% visible (default open)
+const PANEL_MINIMIZED  = SCREEN_H * 0.88;     // ~90px visible (handle + STAND DOWN)
+const PANEL_CLOSED     = SCREEN_H;            // fully off screen
 
 export default function MapScreen() {
   const router = useRouter();
@@ -235,22 +237,38 @@ export default function MapScreen() {
   const { pendingRescue, setPendingRescue } = useRescueStore();
   const startedAtRef = useRef<number>(0);
 
-  // Drag handle to minimize/expand the panel
+  // Drag handle to snap between fullscreen / half / minimized
   const handlePanResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dy) > 8,
       onPanResponderMove: (_, gs) => {
-        const base = panelMinimized.current ? PANEL_MINIMIZED : PANEL_EXPANDED;
-        const next = Math.max(PANEL_EXPANDED, Math.min(PANEL_MINIMIZED, base + gs.dy));
+        const base = (slideAnim as any)._value ?? PANEL_HALF;
+        const next = Math.max(PANEL_FULLSCREEN, Math.min(PANEL_MINIMIZED, base + gs.dy));
         slideAnim.setValue(next);
       },
       onPanResponderRelease: (_, gs) => {
-        const minimize = gs.dy > 40 || gs.vy > 0.5;
-        panelMinimized.current = minimize;
+        const cur = (slideAnim as any)._value ?? PANEL_HALF;
+        let target: number;
+        if (gs.vy < -0.5) {
+          // Fast swipe up → go one level up
+          target = cur < PANEL_HALF ? PANEL_FULLSCREEN : PANEL_FULLSCREEN;
+        } else if (gs.vy > 0.5) {
+          // Fast swipe down → go one level down
+          target = cur > PANEL_HALF ? PANEL_MINIMIZED : PANEL_MINIMIZED;
+        } else {
+          // Slow drag → snap to nearest
+          const dists = [
+            { v: PANEL_FULLSCREEN, d: Math.abs(cur - PANEL_FULLSCREEN) },
+            { v: PANEL_HALF,       d: Math.abs(cur - PANEL_HALF) },
+            { v: PANEL_MINIMIZED,  d: Math.abs(cur - PANEL_MINIMIZED) },
+          ];
+          target = dists.sort((a, b) => a.d - b.d)[0].v;
+        }
+        panelMinimized.current = target === PANEL_MINIMIZED;
         Animated.spring(slideAnim, {
-          toValue: minimize ? PANEL_MINIMIZED : PANEL_EXPANDED,
+          toValue: target,
           useNativeDriver: true,
-          bounciness: minimize ? 0 : 4,
+          bounciness: target === PANEL_FULLSCREEN ? 2 : 0,
         }).start();
       },
     })
@@ -282,12 +300,12 @@ export default function MapScreen() {
     );
 
     panelMinimized.current = false;
-    Animated.spring(slideAnim, { toValue: PANEL_EXPANDED, useNativeDriver: true, bounciness: 4 }).start();
+    Animated.spring(slideAnim, { toValue: PANEL_HALF, useNativeDriver: true, bounciness: 4 }).start();
   }, [slideAnim]);
 
   const closeTrace = useCallback(() => {
     panelMinimized.current = false;
-    Animated.timing(slideAnim, { toValue: SCREEN_H, duration: 250, useNativeDriver: true }).start(() => {
+    Animated.timing(slideAnim, { toValue: PANEL_CLOSED, duration: 250, useNativeDriver: true }).start(() => {
       setActiveTrace(null);
       setSolveResult(null);
     });
@@ -701,6 +719,10 @@ export default function MapScreen() {
           <Animated.View style={[styles.panel, { transform: [{ translateY: slideAnim }] }]}>
             <View style={styles.panelHandle} {...handlePanResponder.panHandlers}>
               <View style={styles.handleBar} />
+              {/* STAND DOWN visible at all panel states including minimized */}
+              <TouchableOpacity style={styles.standDownHandle} onPress={closeTrace}>
+                <Text style={styles.standDownHandleText}>STAND DOWN</Text>
+              </TouchableOpacity>
             </View>
 
             {/* Failure toast */}
@@ -865,20 +887,35 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: '50%',
+    height: '100%',
     backgroundColor: COLORS.navyMid,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
   },
   panelHandle: {
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingTop: 12,
+    paddingBottom: 8,
+    gap: 8,
   },
   handleBar: {
     width: 36,
     height: 4,
     borderRadius: 2,
     backgroundColor: COLORS.navyLight,
+  },
+  standDownHandle: {
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: `${COLORS.concrete}60`,
+  },
+  standDownHandleText: {
+    fontFamily: FONTS.monoBold,
+    fontSize: 9,
+    color: COLORS.concrete,
+    letterSpacing: 1.5,
   },
   failToast: {
     marginHorizontal: 16, marginBottom: 8,

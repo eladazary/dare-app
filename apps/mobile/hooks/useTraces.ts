@@ -41,9 +41,9 @@ export function useLocation() {
     }
     setGranted(true);
 
-    // Get initial position fast
+    // Get initial position fast with low accuracy, then refine with watch
     const pos = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
+      accuracy: Location.Accuracy.Low,
     });
     setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
 
@@ -64,7 +64,8 @@ export function useLocation() {
   return { location, error, granted };
 }
 
-// publicUserId: undefined = not yet loaded (skip fetch), null = loaded but not found, string = ready
+// publicUserId: undefined = still loading, null = not found, string = ready
+// Traces load immediately with publicUserId=null, then refetch when userId resolves
 export function useNearbyTraces(location: UserLocation | null, publicUserId: string | null | undefined) {
   return useQuery({
     queryKey: ['nearby-traces', location?.lat.toFixed(3), location?.lng.toFixed(3), publicUserId ?? 'anon'],
@@ -73,14 +74,13 @@ export function useNearbyTraces(location: UserLocation | null, publicUserId: str
       const { data, error } = await supabase.rpc('get_nearby_traces', {
         user_lat: location.lat,
         user_lng: location.lng,
-        user_id: publicUserId ?? null,
+        user_id: publicUserId ?? null,  // null = no solved-trace filtering yet
         radius_m: 2000,
       });
       if (error) throw error;
       return (data ?? []) as NearbyTrace[];
     },
-    // Wait until publicUserId is known (undefined = still loading)
-    enabled: !!location && publicUserId !== undefined,
+    enabled: !!location,  // don't wait for userId — show traces immediately
     refetchInterval: 30_000,
     staleTime: 20_000,
   });
