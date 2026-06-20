@@ -222,6 +222,7 @@ export default function MapScreen() {
   const [seeding, setSeeding] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [failReason, setFailReason] = useState<'gps_fail' | 'photo_fail' | null>(null);
+  const [panelSnap, setPanelSnap] = useState<'half' | 'fullscreen' | 'minimized'>('half');
 
   // Load user level + public ID for radius scaling and fog of war
   useEffect(() => {
@@ -250,13 +251,10 @@ export default function MapScreen() {
         const cur = (slideAnim as any)._value ?? PANEL_HALF;
         let target: number;
         if (gs.vy < -0.5) {
-          // Fast swipe up → go one level up
-          target = cur < PANEL_HALF ? PANEL_FULLSCREEN : PANEL_FULLSCREEN;
+          target = PANEL_FULLSCREEN;
         } else if (gs.vy > 0.5) {
-          // Fast swipe down → go one level down
-          target = cur > PANEL_HALF ? PANEL_MINIMIZED : PANEL_MINIMIZED;
+          target = cur <= PANEL_HALF ? PANEL_MINIMIZED : PANEL_HALF;
         } else {
-          // Slow drag → snap to nearest
           const dists = [
             { v: PANEL_FULLSCREEN, d: Math.abs(cur - PANEL_FULLSCREEN) },
             { v: PANEL_HALF,       d: Math.abs(cur - PANEL_HALF) },
@@ -265,10 +263,9 @@ export default function MapScreen() {
           target = dists.sort((a, b) => a.d - b.d)[0].v;
         }
         panelMinimized.current = target === PANEL_MINIMIZED;
+        setPanelSnap(target === PANEL_FULLSCREEN ? 'fullscreen' : target === PANEL_MINIMIZED ? 'minimized' : 'half');
         Animated.spring(slideAnim, {
-          toValue: target,
-          useNativeDriver: true,
-          bounciness: target === PANEL_FULLSCREEN ? 2 : 0,
+          toValue: target, useNativeDriver: true, bounciness: target === PANEL_FULLSCREEN ? 2 : 0,
         }).start();
       },
     })
@@ -300,6 +297,7 @@ export default function MapScreen() {
     );
 
     panelMinimized.current = false;
+    setPanelSnap('half');
     Animated.spring(slideAnim, { toValue: PANEL_HALF, useNativeDriver: true, bounciness: 4 }).start();
   }, [slideAnim]);
 
@@ -717,16 +715,21 @@ export default function MapScreen() {
       {activeTrace && (
         <>
           <Animated.View style={[styles.panel, { transform: [{ translateY: slideAnim }] }]}>
-            <View style={styles.panelHandle} {...handlePanResponder.panHandlers}>
-              <View style={styles.handleBar} />
-              {/* ← MAP snaps back to half-screen to see the zone circle */}
-              <TouchableOpacity style={styles.mapBackBtn} onPress={() => {
-                panelMinimized.current = false;
-                Animated.spring(slideAnim, { toValue: PANEL_HALF, useNativeDriver: true, bounciness: 4 }).start();
-              }}>
-                <Text style={styles.mapBackText}>← MAP</Text>
-              </TouchableOpacity>
-            </View>
+            <SafeAreaView
+              edges={panelSnap === 'fullscreen' ? ['top'] : []}
+              style={panelSnap === 'fullscreen' ? styles.panelFullscreenSafe : undefined}
+            >
+              <View style={styles.panelHandle} {...handlePanResponder.panHandlers}>
+                {panelSnap !== 'fullscreen' && <View style={styles.handleBar} />}
+                <TouchableOpacity style={styles.mapBackBtn} onPress={() => {
+                  panelMinimized.current = false;
+                  setPanelSnap('half');
+                  Animated.spring(slideAnim, { toValue: PANEL_HALF, useNativeDriver: true, bounciness: 4 }).start();
+                }}>
+                  <Text style={styles.mapBackText}>← MAP</Text>
+                </TouchableOpacity>
+              </View>
+            </SafeAreaView>
 
             {/* Failure toast */}
             {failReason && (
@@ -761,7 +764,7 @@ export default function MapScreen() {
                 expiresAt={activeTrace.expires_at}
                 xpMultiplier={activeTrace.xp_multiplier ?? 1}
                 onSubmit={handleSubmit}
-                onDismiss={closeTrace}
+                onDismiss={panelSnap !== 'fullscreen' ? closeTrace : undefined}
               />
               <Text style={styles.solveCount}>
                 {activeTrace.solve_count === 0
@@ -895,11 +898,17 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
   },
+  panelFullscreenSafe: {
+    backgroundColor: COLORS.navyMid,
+  },
   panelHandle: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingTop: 12,
     paddingBottom: 8,
-    gap: 8,
+    paddingHorizontal: 16,
+    position: 'relative',
   },
   handleBar: {
     width: 36,
@@ -910,12 +919,12 @@ const styles = StyleSheet.create({
   mapBackBtn: {
     position: 'absolute',
     right: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: `${COLORS.amber}80`,
-    backgroundColor: `${COLORS.amber}15`,
+    borderColor: `${COLORS.amber}90`,
+    backgroundColor: `${COLORS.amber}18`,
   },
   mapBackText: {
     fontFamily: FONTS.monoBold,
