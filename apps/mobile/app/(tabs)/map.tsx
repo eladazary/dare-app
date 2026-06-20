@@ -10,7 +10,7 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
 } from 'react-native';
-import MapView, { Marker, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -99,30 +99,85 @@ function difficultyToStage(
   return 'locked';
 }
 
-// ── Zone signal marker — abstract, no photo, no precise location ──────────────
-// The photo lives only in the TraceCard. The map just says "something is here."
+// ── Sonar ping marker ─────────────────────────────────────────────────────────
+// 3 staggered rings expand outward and fade — like a radar signal.
+// No photo on the map. Photo only appears in the TraceCard.
 
-function ZoneSignal({ color, isActive, xpMultiplier = 1 }: {
+const PING_SIZE = 44; // base ring diameter
+
+function SonarPing({ color, isActive, xpMultiplier = 1 }: {
   color: string; isActive: boolean; xpMultiplier?: number;
 }) {
-  const col = isActive ? color : `${color}60`;
+  const r1s = useRef(new Animated.Value(0.2)).current;
+  const r1o = useRef(new Animated.Value(1)).current;
+  const r2s = useRef(new Animated.Value(0.2)).current;
+  const r2o = useRef(new Animated.Value(1)).current;
+  const r3s = useRef(new Animated.Value(0.2)).current;
+  const r3o = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!isActive) return;
+
+    const DURATION = 2100;
+    const STAGGER  = 700;
+
+    const ring = (scale: Animated.Value, opacity: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.parallel([
+            Animated.timing(scale,   { toValue: 1.9, duration: DURATION, useNativeDriver: true }),
+            Animated.timing(opacity, { toValue: 0,   duration: DURATION, useNativeDriver: true }),
+          ]),
+          Animated.parallel([
+            Animated.timing(scale,   { toValue: 0.2, duration: 0, useNativeDriver: true }),
+            Animated.timing(opacity, { toValue: 1,   duration: 0, useNativeDriver: true }),
+          ]),
+        ])
+      );
+
+    const a1 = ring(r1s, r1o, 0);
+    const a2 = ring(r2s, r2o, STAGGER);
+    const a3 = ring(r3s, r3o, STAGGER * 2);
+    a1.start(); a2.start(); a3.start();
+    return () => { a1.stop(); a2.stop(); a3.stop(); };
+  }, [isActive]);
+
+  const col     = isActive ? color : `${color}45`;
+  const dotCol  = isActive ? color : `${color}30`;
+  const CONTAIN = PING_SIZE * 2; // container large enough for expanded rings
+
   return (
-    <View style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
-      {/* Outer ring */}
-      <View style={{
-        position: 'absolute', width: 32, height: 32, borderRadius: 16,
-        borderWidth: 1.5, borderColor: col,
-        backgroundColor: isActive ? `${col}18` : 'transparent',
-      }} />
-      {/* Inner dot */}
+    <View style={{ width: CONTAIN, height: CONTAIN, alignItems: 'center', justifyContent: 'center' }}>
+      {isActive && (
+        <>
+          {[{ s: r1s, o: r1o }, { s: r2s, o: r2o }, { s: r3s, o: r3o }].map((r, i) => (
+            <Animated.View
+              key={i}
+              style={{
+                position: 'absolute',
+                width: PING_SIZE, height: PING_SIZE, borderRadius: PING_SIZE / 2,
+                borderWidth: 1.5, borderColor: col,
+                opacity: r.o,
+                transform: [{ scale: r.s }],
+              }}
+            />
+          ))}
+        </>
+      )}
+      {/* Static center dot — visible even when out of range */}
       <View style={{
         width: 10, height: 10, borderRadius: 5,
-        backgroundColor: isActive ? col : 'transparent',
-        borderWidth: 1.5, borderColor: col,
+        backgroundColor: dotCol,
+        shadowColor: isActive ? color : 'transparent',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.9,
+        shadowRadius: 6,
+        elevation: 4,
       }} />
       {xpMultiplier > 1 && (
         <View style={{
-          position: 'absolute', top: -4, right: -4,
+          position: 'absolute', top: CONTAIN / 2 - 18, right: CONTAIN / 2 - 18,
           backgroundColor: color, borderRadius: 3,
           paddingHorizontal: 3, paddingVertical: 1,
         }}>
@@ -383,42 +438,31 @@ export default function MapScreen() {
       >
         {traces.filter(t => !t.already_solved && diffFilter.has(t.difficulty)).map((trace) => {
           const isActive = trace.distance_meters <= trace.notify_radius_meters;
-          const col = DIFF_COLOR[trace.difficulty] ?? COLORS.amber;
-          const notifyR = trace.notify_radius_meters;
+          const col      = DIFF_COLOR[trace.difficulty] ?? COLORS.amber;
+          const notifyR  = trace.notify_radius_meters;
 
-          // Zone circle — shows the search area, centered on real location
-          // The signal marker is offset so it doesn't pinpoint the exact spot
+          // Stable offset — ping is inside the search zone but not at exact spot
           const seed  = trace.id.charCodeAt(0) + trace.id.charCodeAt(4) + trace.id.charCodeAt(8);
           const angle = (seed * 137.5) % 360;
-          const frac  = 0.45 + (seed % 20) / 100; // 45–65% from center
+          const frac  = 0.40 + (seed % 25) / 100;
           const dLat  = Math.cos(angle * Math.PI / 180) * frac * notifyR / 111320;
           const dLng  = Math.sin(angle * Math.PI / 180) * frac * notifyR
                         / (111320 * Math.cos(trace.lat * Math.PI / 180));
 
           return (
-            <React.Fragment key={trace.id}>
-              {/* Search zone — tells the player WHERE to look */}
-              <Circle
-                center={{ latitude: trace.lat, longitude: trace.lng }}
-                radius={notifyR * 0.7}
-                fillColor={isActive ? `${col}10` : 'rgba(255,255,255,0.03)'}
-                strokeColor={isActive ? `${col}60` : `${col}25`}
-                strokeWidth={1}
+            <Marker
+              key={trace.id}
+              coordinate={{ latitude: trace.lat + dLat, longitude: trace.lng + dLng }}
+              onPress={() => openTrace(trace)}
+              anchor={{ x: 0.5, y: 0.5 }}
+              tracksViewChanges={isActive}
+            >
+              <SonarPing
+                color={col}
+                isActive={isActive}
+                xpMultiplier={trace.xp_multiplier ?? 1}
               />
-              {/* Signal marker inside zone — abstract, no photo, no precise location */}
-              <Marker
-                coordinate={{ latitude: trace.lat + dLat, longitude: trace.lng + dLng }}
-                onPress={() => openTrace(trace)}
-                anchor={{ x: 0.5, y: 0.5 }}
-                tracksViewChanges={false}
-              >
-                <ZoneSignal
-                  color={col}
-                  isActive={isActive}
-                  xpMultiplier={trace.xp_multiplier ?? 1}
-                />
-              </Marker>
-            </React.Fragment>
+            </Marker>
           );
         })}
 
