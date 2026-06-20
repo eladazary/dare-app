@@ -389,10 +389,21 @@ export default function MapScreen() {
         {traces.filter(t => !t.already_solved && diffFilter.has(t.difficulty)).map((trace) => {
           const isActive = trace.distance_meters <= trace.notify_radius_meters;
           const col = DIFF_COLOR[trace.difficulty] ?? COLORS.amber;
+
+          // Stable offset so the thumbnail doesn't sit at the exact answer spot.
+          // Derived from trace ID — same every render, different per trace.
+          const notifyR = trace.notify_radius_meters;
+          const seed    = trace.id.charCodeAt(0) + trace.id.charCodeAt(4) + trace.id.charCodeAt(8);
+          const angle   = (seed * 137.5) % 360;
+          const frac    = 0.35 + (seed % 25) / 100; // 35–60% of notify radius
+          const dLat    = Math.cos(angle * Math.PI / 180) * frac * notifyR / 111320;
+          const dLng    = Math.sin(angle * Math.PI / 180) * frac * notifyR
+                          / (111320 * Math.cos(trace.lat * Math.PI / 180));
+
           return (
             <Marker
               key={trace.id}
-              coordinate={{ latitude: trace.lat, longitude: trace.lng }}
+              coordinate={{ latitude: trace.lat + dLat, longitude: trace.lng + dLng }}
               onPress={() => openTrace(trace)}
               anchor={{ x: 0.5, y: 0.5 }}
               tracksViewChanges
