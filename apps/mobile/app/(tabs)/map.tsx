@@ -276,7 +276,8 @@ export default function MapScreen() {
     // latDelta = circleDiameter / (0.50 * 0.65) = circleDiameter / 0.325
     // Center at 25% from top = 25% above map center → shift south by latDelta * 0.25
     // Zoom to show the solve circle (×3 for display) in the top 50% of screen
-    const circleDiameterDeg = (trace.solve_radius_meters * 3 * 2) / 111320;
+    const searchRadius = Math.max(50, trace.solve_radius_meters);
+    const circleDiameterDeg = (searchRadius * 2) / 111320;
     const latDelta  = Math.min(0.04, Math.max(0.008, circleDiameterDeg / 0.325));
     const lngDelta  = latDelta * 0.85;
     const centerLat = trace.lat - latDelta * 0.25;
@@ -512,7 +513,7 @@ export default function MapScreen() {
         {activeTrace && (
           <Circle
             center={{ latitude: activeTrace.lat, longitude: activeTrace.lng }}
-            radius={activeTrace.solve_radius_meters * 3}
+            radius={Math.max(50, activeTrace.solve_radius_meters)}
             fillColor={`${DIFF_COLOR[activeTrace.difficulty] ?? COLORS.amber}0D`}
             strokeColor={`${DIFF_COLOR[activeTrace.difficulty] ?? COLORS.amber}90`}
             strokeWidth={1.5}
