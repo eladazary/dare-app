@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import MapView, { Marker, Circle, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const SCREEN_H = Dimensions.get('window').height;
 
@@ -198,6 +198,7 @@ const PANEL_CLOSED     = SCREEN_H;            // fully off screen
 export default function MapScreen() {
   const router = useRouter();
   const mapRef = useRef<MapView>(null);
+  const insets = useSafeAreaInsets();
   const slideAnim    = useRef(new Animated.Value(SCREEN_H)).current;
   const panelMinimized = useRef(false);
 
@@ -703,8 +704,8 @@ export default function MapScreen() {
       {activeTrace && (
         <>
           <Animated.View style={[styles.panel, { transform: [{ translateY: slideAnim }] }]}>
-            {/* Always apply top SafeArea so handle isn't hidden behind notch when dragging */}
-            <SafeAreaView edges={['top']} style={styles.panelSafe}>
+            {/* Top padding only when fullscreen — half mode doesn't need notch clearance */}
+            <View style={[styles.panelSafe, panelSnap === 'fullscreen' && { paddingTop: insets.top }]}>
               <View style={styles.panelHandle} {...handlePanResponder.panHandlers}>
                 {/* Spacer left side for balance */}
                 <View style={{ flex: 1 }} />
@@ -723,7 +724,7 @@ export default function MapScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
-            </SafeAreaView>
+            </View>
 
             {/* Failure toast */}
             {failReason && (

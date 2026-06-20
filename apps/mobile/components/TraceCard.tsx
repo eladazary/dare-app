@@ -83,7 +83,7 @@ export default function TraceCard({
               <View style={[styles.rangeBadge, insideZone && styles.rangeBadgeIn]}>
                 <Text style={[styles.rangeText, insideZone && styles.rangeTextIn]}>
                   {canSubmit
-                    ? '✓ FOUND'
+                    ? 'FOUND ZONE'
                     : insideZone
                     ? 'SEARCH THE ZONE'
                     : `${distToEdge < 1000 ? `${distToEdge}m` : `${(distToEdge/1000).toFixed(1)}km`} TO ZONE`}
