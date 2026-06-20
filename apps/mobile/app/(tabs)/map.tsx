@@ -240,6 +240,18 @@ export default function MapScreen() {
       const r = Math.random();
       setSolveMultiplier(r < 0.60 ? 1 : r < 0.85 ? 2 : r < 0.97 ? 3 : 5);
     }
+
+    // Zoom map so the search zone circle fills the top ~40% of screen
+    // (card covers bottom 60%). Circle diameter fits ~80% of the visible area.
+    // Shift center lat downward so the zone sits in the upper visible portion.
+    const latDelta = Math.max(0.006, (trace.notify_radius_meters * 2) / 111320 / 0.32);
+    const lngDelta = latDelta * 0.9;
+    const centerLat = trace.lat - latDelta * 0.28; // push zone into upper 40%
+    mapRef.current?.animateToRegion(
+      { latitude: centerLat, longitude: trace.lng, latitudeDelta: latDelta, longitudeDelta: lngDelta },
+      500
+    );
+
     Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
   }, [slideAnim]);
 
