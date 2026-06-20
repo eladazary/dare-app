@@ -104,12 +104,13 @@ export default function MapScreen() {
   const mapRef = useRef<MapView>(null);
   const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
 
-  const [publicUserId, setPublicUserId] = useState<string | null>(null);
+  // undefined = not yet loaded, null = loaded but not found, string = ready
+  const [publicUserId, setPublicUserId] = useState<string | null | undefined>(undefined);
 
   const { location, error: locationError, granted } = useLocation();
-  const { data: traces = [], isLoading, refetch } = useNearbyTraces(location);
+  const { data: traces = [], isLoading, refetch } = useNearbyTraces(location, publicUserId);
   const { data: ghostTrails = [] } = useGhostTrails(location);
-  const { data: revealedZones = [], refetch: refetchZones } = useRevealedZones(publicUserId);
+  const { data: revealedZones = [], refetch: refetchZones } = useRevealedZones(publicUserId ?? null);
 
   const [activeTrace, setActiveTrace] = useState<NearbyTrace | null>(null);
   const [attemptsLeft, setAttemptsLeft] = useState(3);
@@ -128,11 +129,11 @@ export default function MapScreen() {
   // Load user level + public ID for radius scaling and fog of war
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
+      if (!user) { setPublicUserId(null); return; }
       supabase.from('users').select('id, level').eq('auth_id', user.id).single()
         .then(({ data }) => {
           if (data?.level) setUserLevel(data.level);
-          if (data?.id) setPublicUserId(data.id);
+          setPublicUserId(data?.id ?? null); // null unblocks the traces fetch even if user row missing
         });
     });
   }, []);

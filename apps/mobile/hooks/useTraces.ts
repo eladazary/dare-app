@@ -64,29 +64,23 @@ export function useLocation() {
   return { location, error, granted };
 }
 
-export function useNearbyTraces(location: UserLocation | null) {
+// publicUserId: undefined = not yet loaded (skip fetch), null = loaded but not found, string = ready
+export function useNearbyTraces(location: UserLocation | null, publicUserId: string | null | undefined) {
   return useQuery({
-    queryKey: ['nearby-traces', location?.lat.toFixed(3), location?.lng.toFixed(3)],
+    queryKey: ['nearby-traces', location?.lat.toFixed(3), location?.lng.toFixed(3), publicUserId ?? 'anon'],
     queryFn: async () => {
       if (!location) return [];
-      // Must use public.users.id (not auth.uid) for the already_solved check
-      const { data: { user } } = await supabase.auth.getUser();
-      let publicUserId: string | null = null;
-      if (user) {
-        const { data: pu } = await supabase
-          .from('users').select('id').eq('auth_id', user.id).single();
-        publicUserId = pu?.id ?? null;
-      }
       const { data, error } = await supabase.rpc('get_nearby_traces', {
         user_lat: location.lat,
         user_lng: location.lng,
-        user_id: publicUserId,
+        user_id: publicUserId ?? null,
         radius_m: 2000,
       });
       if (error) throw error;
       return (data ?? []) as NearbyTrace[];
     },
-    enabled: !!location,
+    // Wait until publicUserId is known (undefined = still loading)
+    enabled: !!location && publicUserId !== undefined,
     refetchInterval: 30_000,
     staleTime: 20_000,
   });
