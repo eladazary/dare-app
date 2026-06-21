@@ -18,8 +18,11 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "app.runtracer.tracer",
+      "buildNumber": "1",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "Tracer uses your location to show traces nearby.",
+        "NSCameraUsageDescription": "Tracer needs camera access to capture proof of your finds."
       }
     },
     "android": {

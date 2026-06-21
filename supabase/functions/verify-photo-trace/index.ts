@@ -139,7 +139,7 @@ async function compareWithAnthropic(
   const verdict = lines[0].trim().toUpperCase();
   const detail = lines.slice(1).join(" ").trim() || text.trim();
 
-  return { match: verdict === "MATCH", detail };
+  return { match: verdict === "YES", detail };
 }
 
 // ── Google Gemini (AI Studio) ────────────────────────────────────────────────
@@ -237,15 +237,15 @@ Deno.serve(async (req) => {
       return json({ valid: true, reason: "success", distance_m: Math.round(distM) });
     }
 
-      console.log(`[verify] GPS ok (${Math.round(distM)}m). Running photo check. ollama=${!!OLLAMA_URL}`);
+      console.log(`[verify] GPS ok (${Math.round(distM)}m). Running photo check. ollama=${!!OLLAMA_URL} gemini=${!!GOOGLE_API_KEY}`);
 
     try {
       const { match, detail } = await comparePhotos(trace.reference_photo_url, selfie_url);
       console.log(`[verify] photo result: match=${match} detail="${detail}"`);
-      // TODO: enforce photo gate once vision API is reliable (currently GPS-only)
-      // if (!match) return json({ valid: false, reason: "photo_fail", detail });
+      if (!match) return json({ valid: false, reason: "photo_fail", detail });
     } catch (photoErr) {
-      console.warn("[verify] photo check skipped:", String(photoErr));
+      // Vision provider unreachable — don't burn the user's attempt
+      console.warn("[verify] photo check skipped (provider error):", String(photoErr));
     }
 
     return json({ valid: true, reason: "success", distance_m: Math.round(distM) });
