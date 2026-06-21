@@ -218,7 +218,11 @@ trace_failures
   trace_id, user_id (all attempts exhausted)
 
 users
-  id, auth_id, username, level, streak_days, streak_last_activity, xp
+  id, auth_id, username, level, streak_days, streak_last_activity, xp, push_token
+
+user_notification_log          -- migration 011
+  user_id, trace_id, notified_at
+  -- prevents re-notifying the same trace for 48h
 ```
 
 ### get_nearby_traces RPC
@@ -282,18 +286,23 @@ apps/mobile/
   components/TraceCard.tsx    ← trace detail card with photo + submit
   components/SolveReveal.tsx  ← success animation after solving
   components/SelfieCapture.tsx ← camera + GPS submit flow
-  hooks/useTraces.ts           ← useNearbyTraces, useLocation
-  constants/colors.ts          ← design system colors
+  hooks/useTraces.ts                ← useNearbyTraces, useLocation
+  hooks/usePushNotifications.ts     ← token registration (Expo push)
+  hooks/useTraceProximityNotifier.ts ← fires trace-nearby on movement
+  constants/colors.ts               ← design system colors
 
 scripts/
   streetview-traces.py         ← main content generator (preferred)
   mapillary-traces.py          ← alternative generator
 
 supabase/
-  migrations/007_traces.sql    ← core trace schema
+  migrations/007_traces.sql             ← core trace schema
   migrations/009_trace_rotation.sql
   migrations/010_pending_pool.sql
-  functions/verify-photo-trace/ ← GPS + photo validation
+  migrations/011_push_notifications.sql ← user_notification_log + get_newly_entered_traces()
+  functions/verify-photo-trace/         ← GPS + photo validation
+  functions/trace-nearby/               ← proximity check + push trigger
+  functions/send-notifications/         ← Expo push delivery
 ```
 
 ---
@@ -304,18 +313,27 @@ supabase/
 - ✅ Sonar ping map markers with difficulty colors
 - ✅ Search zone circle (appears on trace selection)
 - ✅ Half/fullscreen panel with tap-photo-to-expand
-- ✅ Street View content generator (~99 traces in Tel Aviv)
+- ✅ Street View content generator (~120+ traces in Tel Aviv)
 - ✅ Pending pool + rotation system (TTL → cooldown → reactivation)
 - ✅ GitHub Actions hourly cron for pool maintenance
 - ✅ GPS-only submission validation
 - ✅ Attempt system with XP decay
 - ✅ Streak tracking
 - ✅ Create Trace admin tool
+- ✅ Push notifications end-to-end ("A Trace appeared Xm from you")
+  - `useTraceProximityNotifier` fires on ≥50m movement (30s rate limit)
+  - `trace-nearby` edge function + `get_newly_entered_traces()` RPC (deduped 48h)
+  - `user_notification_log` table prevents re-firing (migration 011)
+  - Notification tap → opens map tab
+- ✅ Graffiti/mural-first content generation
+  - OSM `artwork_type=mural/graffiti/street_art/painting` weighted 25–30 (top priority)
+  - Street View panoramas filtered to ≥ 2022 only
+  - Mural-specific FOV (60°) for wall framing
+  - `source=outdoor` on all SV requests
 
 ## What's Pending / Shelved
 
 - ⏳ Photo comparison validation (Gemini/Ollama — infrastructure ready, gate commented out)
-- ⏳ Push notifications ("A Trace appeared near you")
 - ⏳ Taunt flow (challenge a friend after solving)
 - ⏳ Rescue flow
 - ⏳ Streak display UI

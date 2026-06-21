@@ -279,19 +279,21 @@ R2_PUBLIC_URL=https://photos.thedare.app
 
 ## What's Left to Build (Phase 1)
 
-- [ ] Seed hundreds of hand-curated Traces for Tel Aviv + London
-- [ ] Map screen with Trace pins, ghost trails, territory overlays
-- [ ] Trace card UI (clue reveal, attempt counter, selfie submit)
-- [ ] GPS + selfie verification pipeline (Lambda)
-- [ ] Push notification: "A Trace appeared Xm from you"
+> See `docs/TRACER_SPEC.md` for canonical up-to-date state.
+
+- [x] Map screen with Trace pins, sonar markers, zone circle
+- [x] Trace card UI (photo reveal, attempt counter, selfie submit)
+- [x] GPS submission validation
+- [x] Push notifications ("A Trace appeared Xm from you") — end-to-end working
+- [x] Street View content generator (120+ traces in Tel Aviv, graffiti-first)
+- [x] Supabase project + all migrations (001–011) applied
+- [ ] Photo comparison validation (Gemini/Ollama gate — infrastructure ready, commented out)
 - [ ] Taunt flow (challenge a friend after solving)
 - [ ] Rescue flow (last-attempt notification + hint send)
-- [ ] Streak display + 3-day cadence logic
-- [ ] Set up Supabase project + run migrations
-- [ ] Set up Cloudflare R2 bucket
-- [ ] Set up AWS Lambda
-- [ ] Wire up real auth (magic link works, needs real Supabase)
-- [ ] EAS build + TestFlight submission
+- [ ] Streak display UI
+- [ ] EAS production build + TestFlight submission
+- [ ] London traces
+- [ ] runtracer.app landing page
 
 ## What's Shelved for Phase 2
 
@@ -299,7 +301,5 @@ R2_PUBLIC_URL=https://photos.thedare.app
 - Territory UI (map overlay)
 - Bounty board
 - Synchronized unlock
-- AI trace generation from POI data
 - Android build (iOS first)
 - Payment flow for extra attempts (Stripe)
-- Gone+/Dare+ subscription
