@@ -26,9 +26,18 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// Fetch image and base64-encode it. For Supabase Storage URLs, requests a
+// 640px-wide resized version via the built-in transform API to keep payloads
+// small enough for ngrok / provider limits.
 async function urlToBase64(url: string): Promise<{ data: string; mediaType: string }> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-  if (!res.ok) throw new Error(`Failed to fetch image: ${url} (${res.status})`);
+  let fetchUrl = url;
+  if (url.includes("/storage/v1/object/public/")) {
+    // Resize to 320px wide before base64 — keeps payloads small enough for ngrok
+    fetchUrl = url.replace("/storage/v1/object/public/", "/storage/v1/render/image/public/") +
+      "?width=320&quality=50";
+  }
+  const res = await fetch(fetchUrl, { signal: AbortSignal.timeout(15000) });
+  if (!res.ok) throw new Error(`Failed to fetch image: ${fetchUrl} (${res.status})`);
   const buf = await res.arrayBuffer();
   const bytes = new Uint8Array(buf);
   let binary = "";
@@ -45,14 +54,12 @@ async function compareWithOllama(
 ): Promise<{ match: boolean; detail: string }> {
   const [ref, sub] = await Promise.all([urlToBase64(refUrl), urlToBase64(submitUrl)]);
 
-  // Use OpenAI-compatible /v1/chat/completions for clearer multi-image handling
   const res = await fetch(`${OLLAMA_URL}/v1/chat/completions`, {
     method: "POST",
-    headers: { "content-type": "application/json", "authorization": "Bearer ollama" },
+    headers: { "content-type": "application/json", "authorization": "Bearer ollama", "ngrok-skip-browser-warning": "true" },
     body: JSON.stringify({
       model: OLLAMA_MODEL,
       stream: false,
-      think: false,
       max_tokens: 10,
       messages: [{
         role: "user",
@@ -191,9 +198,9 @@ async function compareWithGemini(
 
 function comparePhotos(refUrl: string, submitUrl: string) {
   if (OLLAMA_URL) return compareWithOllama(refUrl, submitUrl);
-  if (GOOGLE_API_KEY) return compareWithGemini(refUrl, submitUrl);
   if (ANTHROPIC_API_KEY) return compareWithAnthropic(refUrl, submitUrl);
-  throw new Error("No vision provider configured (set OLLAMA_URL, LLM_API_KEY, or ANTHROPIC_API_KEY)");
+  if (GOOGLE_API_KEY) return compareWithGemini(refUrl, submitUrl);
+  throw new Error("No vision provider configured (set OLLAMA_URL, ANTHROPIC_API_KEY, or LLM_API_KEY)");
 }
 
 Deno.serve(async (req) => {
@@ -244,7 +251,6 @@ Deno.serve(async (req) => {
       console.log(`[verify] photo result: match=${match} detail="${detail}"`);
       if (!match) return json({ valid: false, reason: "photo_fail", detail });
     } catch (photoErr) {
-      // Vision provider unreachable — don't burn the user's attempt
       console.warn("[verify] photo check skipped (provider error):", String(photoErr));
     }
 
